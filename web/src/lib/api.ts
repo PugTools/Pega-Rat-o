@@ -1,12 +1,5 @@
-const rawApiBaseUrl =
-  typeof window === "undefined"
-    ? process.env.INTERNAL_API_BASE_URL ??
-      process.env.NEXT_PUBLIC_API_BASE_URL ??
-      "http://127.0.0.1:8000/api/v1"
-    : process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
-const API_BASE_URL = rawApiBaseUrl.endsWith("/api/v1")
-  ? rawApiBaseUrl
-  : `${rawApiBaseUrl.replace(/\/$/, "")}/api/v1`;
+const rawApiBaseUrl = "https://studious-waffle-7vp46vqvq57pfggw-8000.app.github.dev/api/v1";
+const API_BASE_URL = rawApiBaseUrl;
 const MOCK_AUTH_TOKEN = "mock-token-ongp";
 
 export type Company = {
