@@ -3,11 +3,7 @@
 import { AlertCircle, CheckCircle2, Loader2, Play, RefreshCw, Terminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const rawApiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
-const API_BASE_URL = rawApiBaseUrl.endsWith("/api/v1")
-  ? rawApiBaseUrl
-  : `${rawApiBaseUrl.replace(/\/$/, "")}/api/v1`;
+const API_BASE_URL = "/api/backend";
 const AUTH_HEADER = "Bearer mock-token-ongp";
 
 type AdminLog = {

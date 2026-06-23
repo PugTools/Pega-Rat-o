@@ -1,5 +1,5 @@
-const rawApiBaseUrl = "https://studious-waffle-7vp46vqvq57pfggw-8000.app.github.dev/api/v1";
-const API_BASE_URL = rawApiBaseUrl;
+const rawApiBaseUrl = "https://studious-waffle-7vp46vqvq57pfggw-8000.app.github.dev";
+const API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl);
 const MOCK_AUTH_TOKEN = "mock-token-ongp";
 
 export type Company = {
@@ -129,6 +129,14 @@ type ApiErrorPayload = {
   detail?: unknown;
   message?: unknown;
 };
+
+function normalizeApiBaseUrl(value: string): string {
+  const trimmed = value.replace(/\/$/, "");
+  if (trimmed.endsWith("/api/v1") || trimmed.endsWith("/api/backend")) {
+    return trimmed;
+  }
+  return `${trimmed}/api/v1`;
+}
 
 function getAuthToken(): string {
   if (typeof window === "undefined") {
