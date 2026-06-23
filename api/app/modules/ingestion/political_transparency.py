@@ -65,6 +65,7 @@ class PoliticalTransparencyIngestion:
         paginas_camara: int = 1,
         incluir_senado: bool = True,
         despesas_senado: bool = False,
+        sync_graph: bool = True,
     ) -> PoliticalIngestionResult:
         expense_year = ano or date.today().year
         errors: list[str] = []
@@ -121,7 +122,8 @@ class PoliticalTransparencyIngestion:
             )
             saved_expenses.extend(persisted_expenses)
             self._update_person_expense_summary(person, persisted_expenses, expense_year)
-            self._sync_person_to_graph(person, errors)
+            if sync_graph:
+                self._sync_person_to_graph(person, errors)
 
         if errors:
             logger.warning("political_ingestion_completed_with_errors: %s", errors)

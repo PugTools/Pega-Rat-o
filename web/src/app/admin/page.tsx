@@ -29,12 +29,25 @@ type Toast = {
 
 type ActionKey = "politicians" | "daily";
 
+type AdminActionResponse = {
+  status: string;
+  job?: string;
+  task_id?: string;
+  politicians_found?: number;
+  politicians_saved?: number;
+  expenses_found?: number;
+  expenses_saved?: number;
+  source_counts?: Record<string, number>;
+  errors?: string[];
+};
+
 export default function AdminPage() {
   const [logs, setLogs] = useState<AdminLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<ActionKey | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [lastResult, setLastResult] = useState<AdminActionResponse | null>(null);
 
   const systemSummary = useMemo(() => {
     const errors = logs.filter((log) => log.status === "error").length;
@@ -78,16 +91,18 @@ export default function AdminPage() {
     try {
       const path =
         action === "politicians"
-          ? "/ingestion/politicians/run?itens=100&paginas_camara=1&despesas_por_politico=100&incluir_senado=true"
+          ? "/ingestion/politicians/run?sync=true&itens=100&paginas_camara=6&despesas_por_politico=0&incluir_senado=true"
           : "/ingestion/run";
-      const payload = await adminRequest<Record<string, unknown>>(path, {
+      const payload = await adminRequest<AdminActionResponse>(path, {
         method: "POST",
       });
+      setLastResult(action === "politicians" ? payload : null);
       setToast({
         type: "success",
-        message: `Tarefa enviada com sucesso: ${String(payload.task_id ?? "sem id")}`,
+        message: successMessage(action, payload),
       });
       await loadLogs();
+      window.setTimeout(loadLogs, 2500);
     } catch (error) {
       setToast({
         type: "error",
@@ -140,9 +155,9 @@ export default function AdminPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <ActionCard
           busy={runningAction === "politicians"}
-          description="Busca deputados, senadores, partidos, UF e gastos parlamentares disponiveis."
+          description="Busca e salva agora deputados e senadores ativos com partido, UF, foto e email oficiais."
           onRun={() => runAction("politicians")}
-          title="Sincronizar Camara/Senado"
+          title="Atualizar politicos ativos"
         />
         <ActionCard
           busy={runningAction === "daily"}
@@ -151,6 +166,8 @@ export default function AdminPage() {
           title="Executar Ingestao Geral"
         />
       </section>
+
+      {lastResult ? <LastResultCard result={lastResult} /> : null}
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -225,6 +242,50 @@ function ActionCard({
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
         {busy ? "Enviando..." : "Disparar tarefa"}
       </button>
+    </div>
+  );
+}
+
+function LastResultCard({ result }: { result: AdminActionResponse }) {
+  const camaraCount = result.source_counts?.["dados-abertos-camara"] ?? 0;
+  const senadoCount = result.source_counts?.["dados-abertos-senado"] ?? 0;
+
+  return (
+    <section className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-emerald-800">
+            Ultima execucao
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-950">
+            {result.status === "completed"
+              ? "Politicos ativos sincronizados"
+              : "Tarefa enviada ao processamento"}
+          </h3>
+          <p className="mt-1 text-sm text-emerald-900">
+            {successMessage("politicians", result)}
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <ResultMetric label="Encontrados" value={result.politicians_found ?? 0} />
+          <ResultMetric label="Salvos" value={result.politicians_saved ?? 0} />
+          <ResultMetric label="Avisos" value={result.errors?.length ?? 0} />
+        </div>
+      </div>
+      {camaraCount || senadoCount ? (
+        <p className="mt-4 text-xs text-emerald-900">
+          Fontes: Camara {camaraCount} registro(s), Senado {senadoCount} registro(s).
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ResultMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-emerald-200 bg-white px-4 py-3 text-center">
+      <p className="text-xl font-semibold text-slate-950">{value}</p>
+      <p className="mt-1 text-xs font-medium text-slate-500">{label}</p>
     </div>
   );
 }
@@ -338,6 +399,17 @@ function errorMessage(error: unknown) {
     return error.message;
   }
   return "erro desconhecido";
+}
+
+function successMessage(action: ActionKey, payload: AdminActionResponse) {
+  if (action === "politicians" && payload.politicians_saved !== undefined) {
+    const found = payload.politicians_found ?? payload.politicians_saved;
+    const warnings = payload.errors?.length ?? 0;
+    const warningText = warnings ? ` com ${warnings} aviso(s)` : "";
+    return `${payload.politicians_saved} de ${found} politicos ativos salvos${warningText}.`;
+  }
+
+  return `Tarefa enviada com sucesso: ${payload.task_id ?? "sem id"}`;
 }
 
 function statusLabel(status: string) {
