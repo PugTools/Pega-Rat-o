@@ -1,4 +1,9 @@
-const rawApiBaseUrl = "https://studious-waffle-7vp46vqvq57pfggw-8000.app.github.dev";
+const rawApiBaseUrl =
+  typeof window === "undefined"
+    ? process.env.INTERNAL_API_BASE_URL ??
+      absoluteUrlOrUndefined(process.env.NEXT_PUBLIC_API_BASE_URL) ??
+      "http://127.0.0.1:8000/api/v1"
+    : process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/backend";
 const API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl);
 const MOCK_AUTH_TOKEN = "mock-token-ongp";
 
@@ -136,6 +141,15 @@ function normalizeApiBaseUrl(value: string): string {
     return trimmed;
   }
   return `${trimmed}/api/v1`;
+}
+
+function absoluteUrlOrUndefined(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.startsWith("http://") || value.startsWith("https://")
+    ? value
+    : undefined;
 }
 
 function getAuthToken(): string {

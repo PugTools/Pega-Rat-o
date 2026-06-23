@@ -1,6 +1,13 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Loader2, Play, RefreshCw, Terminal } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Play,
+  RefreshCw,
+  Terminal,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE_URL = "/api/backend";
@@ -31,10 +38,8 @@ export default function AdminPage() {
 
   const systemSummary = useMemo(() => {
     const errors = logs.filter((log) => log.status === "error").length;
-    const running = logs.filter((log) => log.status === "running").length;
     return {
       errors,
-      running,
       healthy: errors === 0,
     };
   }, [logs]);
@@ -50,7 +55,7 @@ export default function AdminPage() {
           id: "frontend-log-fetch-error",
           status: "error",
           title: "Falha ao carregar logs",
-          message: "A interface não conseguiu consultar a API de administração.",
+          message: "A interface nao conseguiu consultar a API de administracao.",
           technical_details: serializeError(error),
           created_at: new Date().toISOString(),
         },
@@ -75,7 +80,9 @@ export default function AdminPage() {
         action === "politicians"
           ? "/ingestion/politicians/run?itens=100&paginas_camara=1&despesas_por_politico=100&incluir_senado=true"
           : "/ingestion/run";
-      const payload = await adminRequest<Record<string, unknown>>(path, { method: "POST" });
+      const payload = await adminRequest<Record<string, unknown>>(path, {
+        method: "POST",
+      });
       setToast({
         type: "success",
         message: `Tarefa enviada com sucesso: ${String(payload.task_id ?? "sem id")}`,
@@ -84,7 +91,7 @@ export default function AdminPage() {
     } catch (error) {
       setToast({
         type: "error",
-        message: `Não foi possível iniciar a tarefa: ${errorMessage(error)}`,
+        message: `Nao foi possivel iniciar a tarefa: ${errorMessage(error)}`,
       });
     } finally {
       setRunningAction(null);
@@ -97,11 +104,11 @@ export default function AdminPage() {
         <div>
           <p className="text-sm font-medium text-slate-500">Backoffice operacional</p>
           <h2 className="mt-1 text-2xl font-semibold text-slate-950">
-            Administração do Sistema
+            Administracao do Sistema
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Dispare coletas oficiais e acompanhe tarefas, avisos e erros recentes em
-            uma visão amigável com detalhes técnicos sob demanda.
+            uma visao amigavel com detalhes tecnicos sob demanda.
           </p>
         </div>
         <div
@@ -133,15 +140,15 @@ export default function AdminPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <ActionCard
           busy={runningAction === "politicians"}
-          description="Busca deputados, senadores, partidos, UF e gastos parlamentares disponíveis."
+          description="Busca deputados, senadores, partidos, UF e gastos parlamentares disponiveis."
           onRun={() => runAction("politicians")}
-          title="Sincronizar Câmara/Senado"
+          title="Sincronizar Camara/Senado"
         />
         <ActionCard
           busy={runningAction === "daily"}
-          description="Dispara a coleta geral do Portal da Transparência para contratos e despesas."
+          description="Dispara a coleta geral do Portal da Transparencia para contratos e despesas."
           onRun={() => runAction("daily")}
-          title="Executar Ingestão Geral"
+          title="Executar Ingestao Geral"
         />
       </section>
 
@@ -152,7 +159,7 @@ export default function AdminPage() {
               Monitor de Logs
             </h3>
             <p className="mt-1 text-sm text-slate-500">
-              Atualização automática a cada 15 segundos
+              Atualizacao automatica a cada 15 segundos
             </p>
           </div>
           <button
@@ -272,7 +279,7 @@ function LogRow({
           type="button"
         >
           <Terminal className="h-4 w-4" />
-          Detalhes Técnicos
+          Detalhes Tecnicos
         </button>
       </div>
 
@@ -337,7 +344,7 @@ function statusLabel(status: string) {
   const labels: Record<string, string> = {
     success: "Sucesso",
     error: "Erro",
-    running: "Em execução",
+    running: "Em execucao",
   };
   return labels[status] ?? status;
 }
