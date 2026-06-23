@@ -14,10 +14,20 @@ from app.modules.ingestion.camara_senado_client import (
     CamaraDadosAbertosClient,
     SenadoDadosAbertosClient,
 )
+from app.modules.ingestion.tse_client import TseDadosAbertosClient
 from app.schemas.core_schemas import ExpenseCreate, PersonCreate, PublicRoleCreate
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PoliticalRecord:
+    person: PersonCreate
+    role_name: str | None = None
+    branch: str | None = None
+    jurisdiction_level: str | None = None
+    municipality_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,11 +59,13 @@ class PoliticalTransparencyIngestion:
         client: CamaraDadosAbertosClient | None = None,
         camara_client: CamaraDadosAbertosClient | None = None,
         senado_client: SenadoDadosAbertosClient | None = None,
+        tse_client: TseDadosAbertosClient | None = None,
         graph_sync_service: GraphSyncService | None = None,
     ) -> None:
         self.db = db
         self.camara_client = camara_client or client or CamaraDadosAbertosClient()
         self.senado_client = senado_client or SenadoDadosAbertosClient()
+        self.tse_client = tse_client or TseDadosAbertosClient()
         self.graph_sync_service = graph_sync_service or GraphSyncService()
 
     def run(
@@ -65,6 +77,10 @@ class PoliticalTransparencyIngestion:
         paginas_camara: int = 1,
         incluir_senado: bool = True,
         despesas_senado: bool = False,
+        incluir_tse: bool = False,
+        anos_tse: list[int] | None = None,
+        limite_tse_por_cargo: int = 50,
+        uf_tse: str | None = None,
         sync_graph: bool = True,
     ) -> PoliticalIngestionResult:
         expense_year = ano or date.today().year
@@ -76,6 +92,10 @@ class PoliticalTransparencyIngestion:
             itens=itens,
             paginas_camara=paginas_camara,
             incluir_senado=incluir_senado,
+            incluir_tse=incluir_tse,
+            anos_tse=anos_tse,
+            limite_tse_por_cargo=limite_tse_por_cargo,
+            uf_tse=uf_tse,
             errors=errors,
             source_counts=source_counts,
         )
@@ -96,18 +116,19 @@ class PoliticalTransparencyIngestion:
         expenses_found = 0
 
         for politician_payload in politicians:
+            person_payload = politician_payload.person
             try:
-                person = repositories.upsert_person(self.db, politician_payload)
+                person = repositories.upsert_person(self.db, person_payload)
                 self._upsert_public_role(person, politician_payload, errors)
                 saved_people.append(person)
             except Exception as exc:
                 errors.append(
-                    f"politician_persist_failed:{politician_payload.external_id}: {exc}"
+                    f"politician_persist_failed:{person_payload.external_id}: {exc}"
                 )
                 continue
 
             politician_expenses = self._fetch_expenses_for_person(
-                politician_payload=politician_payload,
+                politician_payload=person_payload,
                 expense_year=expense_year,
                 despesas_por_politico=despesas_por_politico,
                 despesas_senado=despesas_senado,
@@ -147,10 +168,14 @@ class PoliticalTransparencyIngestion:
         itens: int,
         paginas_camara: int,
         incluir_senado: bool,
+        incluir_tse: bool,
+        anos_tse: list[int] | None,
+        limite_tse_por_cargo: int,
+        uf_tse: str | None,
         errors: list[str],
         source_counts: dict[str, int],
-    ) -> list[PersonCreate]:
-        politicians: list[PersonCreate] = []
+    ) -> list[PoliticalRecord]:
+        politicians: list[PoliticalRecord] = []
 
         try:
             deputados = self.camara_client.fetch_deputados_pages(
@@ -159,7 +184,15 @@ class PoliticalTransparencyIngestion:
                 itens=itens,
             )
             source_counts["dados-abertos-camara"] = len(deputados)
-            politicians.extend(deputados)
+            politicians.extend(
+                PoliticalRecord(
+                    person=deputado,
+                    role_name="Deputado Federal",
+                    branch="legislativo",
+                    jurisdiction_level="federal",
+                )
+                for deputado in deputados
+            )
         except Exception as exc:
             errors.append(f"camara_politicians_fetch_failed: {exc}")
 
@@ -167,9 +200,61 @@ class PoliticalTransparencyIngestion:
             try:
                 senadores = self.senado_client.fetch_senadores()
                 source_counts["dados-abertos-senado"] = len(senadores)
-                politicians.extend(senadores)
+                politicians.extend(
+                    PoliticalRecord(
+                        person=senador,
+                        role_name="Senador",
+                        branch="legislativo",
+                        jurisdiction_level="federal",
+                    )
+                    for senador in senadores
+                )
             except Exception as exc:
                 errors.append(f"senado_politicians_fetch_failed: {exc}")
+
+        if incluir_tse:
+            politicians.extend(
+                self._fetch_tse_politicians(
+                    anos_tse=anos_tse or [2024, 2022],
+                    limite_tse_por_cargo=limite_tse_por_cargo,
+                    uf_tse=uf_tse,
+                    errors=errors,
+                    source_counts=source_counts,
+                )
+            )
+
+        return politicians
+
+    def _fetch_tse_politicians(
+        self,
+        anos_tse: list[int],
+        limite_tse_por_cargo: int,
+        uf_tse: str | None,
+        errors: list[str],
+        source_counts: dict[str, int],
+    ) -> list[PoliticalRecord]:
+        politicians: list[PoliticalRecord] = []
+
+        for year in anos_tse:
+            try:
+                records = self.tse_client.fetch_elected_candidates(
+                    year=year,
+                    state_code=uf_tse,
+                    limit_per_role=limite_tse_por_cargo,
+                )
+                source_counts[f"dados-abertos-tse-{year}"] = len(records)
+                politicians.extend(
+                    PoliticalRecord(
+                        person=record.person,
+                        role_name=record.role_name,
+                        branch=record.branch,
+                        jurisdiction_level=record.jurisdiction_level,
+                        municipality_code=record.municipality_code,
+                    )
+                    for record in records
+                )
+            except Exception as exc:
+                errors.append(f"tse_politicians_fetch_failed:{year}: {exc}")
 
         return politicians
 
@@ -210,13 +295,10 @@ class PoliticalTransparencyIngestion:
     def _upsert_public_role(
         self,
         person: Person,
-        politician_payload: PersonCreate,
+        politician_payload: PoliticalRecord,
         errors: list[str],
     ) -> None:
-        role_name = {
-            "dados-abertos-camara": "Deputado Federal",
-            "dados-abertos-senado": "Senador",
-        }.get(politician_payload.data_origin or "")
+        role_name = politician_payload.role_name
 
         if not role_name:
             return
@@ -227,10 +309,11 @@ class PoliticalTransparencyIngestion:
                 PublicRoleCreate(
                     person_id=person.id,
                     role_name=role_name,
-                    branch="legislativo",
-                    jurisdiction_level="federal",
-                    state_code=politician_payload.state_code,
-                    party_acronym=politician_payload.party_acronym,
+                    branch=politician_payload.branch,
+                    jurisdiction_level=politician_payload.jurisdiction_level,
+                    state_code=politician_payload.person.state_code,
+                    municipality_code=politician_payload.municipality_code,
+                    party_acronym=politician_payload.person.party_acronym,
                 ),
             )
         except Exception as exc:

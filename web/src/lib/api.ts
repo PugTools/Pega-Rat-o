@@ -12,8 +12,25 @@ export type Company = {
   legal_name: string;
   trade_name?: string | null;
   cnpj: string;
+  cnae?: string | null;
+  city?: string | null;
   state_code?: string | null;
+  registration_status?: string | null;
   created_at: string;
+};
+
+export type PublicRole = {
+  id: string;
+  person_id?: string;
+  role_name: string;
+  branch?: string | null;
+  jurisdiction_level?: string | null;
+  state_code?: string | null;
+  municipality_code?: string | null;
+  party_acronym?: string | null;
+  organization_id?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
 };
 
 export type Person = {
@@ -31,6 +48,23 @@ export type Person = {
   latest_expense_total?: string | number | null;
   latest_expense_year?: number | null;
   created_at: string;
+  roles?: PublicRole[];
+};
+
+export type PersonDetail = Person & {
+  recent_expenses: Expense[];
+  expense_total?: string | number | null;
+};
+
+export type Organization = {
+  id: string;
+  name: string;
+  normalized_name: string;
+  cnpj?: string | null;
+  organization_type?: string | null;
+  jurisdiction_level?: string | null;
+  state_code?: string | null;
+  municipality_code?: string | null;
 };
 
 export type Contract = {
@@ -40,21 +74,41 @@ export type Contract = {
   supplier_company_id?: string | null;
   organization_id?: string | null;
   object?: string | null;
+  modality?: string | null;
   status?: string | null;
+  signed_at?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
   total_value?: string | number | null;
   created_at: string;
+  supplier?: Company | null;
+  organization?: Organization | null;
+};
+
+export type ContractDetail = Contract & {
+  expenses: Expense[];
+  expense_total?: string | number | null;
 };
 
 export type Expense = {
   id: string;
+  organization_id?: string | null;
+  company_id?: string | null;
+  contract_id?: string | null;
+  person_id?: string | null;
+  expense_type?: string | null;
+  description?: string | null;
+  commitment_number?: string | null;
+  liquidation_number?: string | null;
+  payment_number?: string | null;
   amount: string | number;
   expense_date: string;
   fiscal_year: number;
-  organization_id?: string | null;
-  company_id?: string | null;
-  person_id?: string | null;
-  description?: string | null;
   state_code?: string | null;
+  municipality_code?: string | null;
+  source_id?: string | null;
+  raw_document_id?: string | null;
+  created_at?: string;
 };
 
 export type RiskAlert = {
@@ -112,7 +166,18 @@ export type ListPersonsParams = {
   party?: string;
   stateCode?: string;
   name?: string;
+  roleName?: string;
+  jurisdictionLevel?: string;
+  municipalityCode?: string;
   orderBy?: "expense_total" | "name" | "party" | "state";
+};
+
+export type ListContractsParams = {
+  limit?: number;
+  q?: string;
+  status?: string;
+  organizationId?: string;
+  supplierCompanyId?: string;
 };
 
 export type PoliticalIngestionResult = {
@@ -175,6 +240,7 @@ function normalizePerson(item: Person): Person {
     email: item.email ?? null,
     latest_expense_total: item.latest_expense_total ?? null,
     latest_expense_year: item.latest_expense_year ?? null,
+    roles: item.roles ?? [],
   };
 }
 
@@ -230,11 +296,41 @@ export const api = {
     if (resolvedParams.name) {
       searchParams.set("name", resolvedParams.name);
     }
+    if (resolvedParams.roleName) {
+      searchParams.set("role_name", resolvedParams.roleName);
+    }
+    if (resolvedParams.jurisdictionLevel) {
+      searchParams.set("jurisdiction_level", resolvedParams.jurisdictionLevel);
+    }
+    if (resolvedParams.municipalityCode) {
+      searchParams.set("municipality_code", resolvedParams.municipalityCode);
+    }
 
     const persons = await request<Person[]>(`/persons?${searchParams.toString()}`);
     return persons.map(normalizePerson);
   },
-  listContracts: (limit = 50) => request<Contract[]>(`/contracts?limit=${limit}`),
+  getPerson: async (id: string) => normalizePerson(await request<PersonDetail>(`/persons/${id}`)) as PersonDetail,
+  listContracts: (params: number | ListContractsParams = 50) => {
+    const resolvedParams =
+      typeof params === "number" ? { limit: params } : { limit: 50, ...params };
+    const searchParams = new URLSearchParams({
+      limit: String(resolvedParams.limit ?? 50),
+    });
+    if (resolvedParams.q) {
+      searchParams.set("q", resolvedParams.q);
+    }
+    if (resolvedParams.status) {
+      searchParams.set("status", resolvedParams.status);
+    }
+    if (resolvedParams.organizationId) {
+      searchParams.set("organization_id", resolvedParams.organizationId);
+    }
+    if (resolvedParams.supplierCompanyId) {
+      searchParams.set("supplier_company_id", resolvedParams.supplierCompanyId);
+    }
+    return request<Contract[]>(`/contracts?${searchParams.toString()}`);
+  },
+  getContract: (id: string) => request<ContractDetail>(`/contracts/${id}`),
   listExpenses: (limit = 50) => request<Expense[]>(`/expenses?limit=${limit}`),
   listAlerts: (limit = 50) => request<RiskAlert[]>(`/alerts?limit=${limit}`),
   askCopilot: (question: string) =>
@@ -256,6 +352,10 @@ export const api = {
     expensesPerPolitician?: number;
     includeSenate?: boolean;
     senateExpenses?: boolean;
+    includeTse?: boolean;
+    tseYears?: string;
+    tseLimitPerRole?: number;
+    tseStateCode?: string;
   } = {}) => {
     const searchParams = new URLSearchParams({
       itens: String(params.limit ?? 100),
@@ -264,9 +364,15 @@ export const api = {
       despesas_por_politico: String(params.expensesPerPolitician ?? 100),
       incluir_senado: String(params.includeSenate ?? true),
       despesas_senado: String(params.senateExpenses ?? false),
+      incluir_tse: String(params.includeTse ?? true),
+      anos_tse: params.tseYears ?? "2024,2022",
+      limite_tse_por_cargo: String(params.tseLimitPerRole ?? 50),
     });
     if (params.year) {
       searchParams.set("ano", String(params.year));
+    }
+    if (params.tseStateCode) {
+      searchParams.set("uf_tse", params.tseStateCode);
     }
     return request<PoliticalIngestionResult>(
       `/ingestion/politicians/run?${searchParams.toString()}`,

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ORMModel(BaseModel):
@@ -47,9 +47,23 @@ class PersonCreate(PersonBase):
     pass
 
 
+class PersonRoleResponse(ORMModel):
+    id: UUID
+    role_name: str
+    branch: str | None = None
+    jurisdiction_level: str | None = None
+    state_code: str | None = None
+    municipality_code: str | None = None
+    party_acronym: str | None = None
+    organization_id: UUID | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
 class PersonResponse(PersonBase, ORMModel):
     id: UUID
     created_at: datetime
+    roles: list[PersonRoleResponse] = Field(default_factory=list)
 
 
 class OrganizationBase(BaseModel):
@@ -146,6 +160,8 @@ class ContractCreate(ContractBase):
 class ContractResponse(ContractBase, ORMModel):
     id: UUID
     created_at: datetime
+    supplier: CompanyResponse | None = None
+    organization: OrganizationResponse | None = None
 
 
 class ExpenseBase(BaseModel):
@@ -174,6 +190,16 @@ class ExpenseCreate(ExpenseBase):
 class ExpenseResponse(ExpenseBase, ORMModel):
     id: UUID
     created_at: datetime
+
+
+class PersonDetailResponse(PersonResponse):
+    recent_expenses: list[ExpenseResponse] = Field(default_factory=list)
+    expense_total: Decimal | None = None
+
+
+class ContractDetailResponse(ContractResponse):
+    expenses: list[ExpenseResponse] = Field(default_factory=list)
+    expense_total: Decimal | None = None
 
 
 class RiskAlertResponse(ORMModel):

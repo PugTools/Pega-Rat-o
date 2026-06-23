@@ -1,4 +1,4 @@
-import { PoliticoProfile } from "@/components/PoliticoProfile";
+import { PoliticiansExplorer } from "@/components/PoliticiansExplorer";
 import { api, type Person } from "@/lib/api";
 
 const fallbackPersons: Person[] = [
@@ -17,6 +17,14 @@ const fallbackPersons: Person[] = [
     latest_expense_total: "184500.00",
     latest_expense_year: 2025,
     created_at: new Date().toISOString(),
+    roles: [
+      {
+        id: "mock-role-1",
+        role_name: "Prefeito",
+        jurisdiction_level: "municipal",
+        state_code: "DF",
+      },
+    ],
   },
   {
     id: "mock-person-2",
@@ -33,12 +41,20 @@ const fallbackPersons: Person[] = [
     latest_expense_total: "127300.00",
     latest_expense_year: 2025,
     created_at: new Date().toISOString(),
+    roles: [
+      {
+        id: "mock-role-2",
+        role_name: "Vereador",
+        jurisdiction_level: "municipal",
+        state_code: "SP",
+      },
+    ],
   },
 ];
 
 async function getPersons(): Promise<{ persons: Person[]; isFallback: boolean }> {
   try {
-    const persons = await api.listPersons(100);
+    const persons = await api.listPersons({ limit: 1000, orderBy: "name" });
     return {
       persons: persons.length ? persons : fallbackPersons,
       isFallback: persons.length === 0,
@@ -60,7 +76,7 @@ export default async function PoliticosPage() {
         <h2 className="mt-1 text-2xl font-semibold text-slate-950">Politicos</h2>
       </div>
 
-      <PoliticoProfile persons={persons} isFallback={isFallback} />
+      <PoliticiansExplorer persons={persons} isFallback={isFallback} />
     </div>
   );
 }

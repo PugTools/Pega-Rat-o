@@ -1,11 +1,12 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.database import get_db
-from app.db.models import Contract
-from app.schemas.core_schemas import ContractResponse
+from app.db.models import Contract, Expense
+from app.schemas.core_schemas import ContractDetailResponse, ContractResponse, ExpenseResponse
 
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
@@ -15,13 +16,25 @@ router = APIRouter(prefix="/contracts", tags=["contracts"])
 def list_contracts(
     db: Session = Depends(get_db),
     skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=50, ge=1, le=1000),
+    q: str | None = None,
     organization_id: UUID | None = None,
     supplier_company_id: UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
 ) -> list[Contract]:
-    query = db.query(Contract)
+    query = db.query(Contract).options(
+        selectinload(Contract.supplier),
+        selectinload(Contract.organization),
+    )
 
+    if q:
+        query = query.filter(
+            or_(
+                Contract.contract_number.ilike(f"%{q}%"),
+                Contract.process_number.ilike(f"%{q}%"),
+                Contract.object.ilike(f"%{q}%"),
+            )
+        )
     if organization_id:
         query = query.filter(Contract.organization_id == organization_id)
     if supplier_company_id:
@@ -32,13 +45,64 @@ def list_contracts(
     return query.order_by(Contract.created_at.desc()).offset(skip).limit(limit).all()
 
 
-@router.get("/{contract_id}", response_model=ContractResponse)
-def get_contract(contract_id: UUID, db: Session = Depends(get_db)) -> Contract:
-    contract = db.get(Contract, contract_id)
+@router.get("/{contract_id}", response_model=ContractDetailResponse)
+def get_contract(contract_id: UUID, db: Session = Depends(get_db)) -> dict:
+    contract = (
+        db.query(Contract)
+        .options(
+            selectinload(Contract.supplier),
+            selectinload(Contract.organization),
+        )
+        .filter(Contract.id == contract_id)
+        .one_or_none()
+    )
     if contract is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Contract not found.",
         )
 
-    return contract
+    payload = ContractResponse.model_validate(contract).model_dump(mode="json")
+    expenses = (
+        db.query(Expense)
+        .filter(Expense.contract_id == contract_id)
+        .order_by(Expense.expense_date.desc(), Expense.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    payload["supplier"] = (
+        {
+            "id": str(contract.supplier.id),
+            "legal_name": contract.supplier.legal_name,
+            "trade_name": contract.supplier.trade_name,
+            "cnpj": contract.supplier.cnpj,
+            "cnae": contract.supplier.cnae,
+            "city": contract.supplier.city,
+            "state_code": contract.supplier.state_code,
+            "registration_status": contract.supplier.registration_status,
+            "source_id": str(contract.supplier.source_id) if contract.supplier.source_id else None,
+            "created_at": contract.supplier.created_at.isoformat(),
+        }
+        if contract.supplier
+        else None
+    )
+    payload["organization"] = (
+        {
+            "id": str(contract.organization.id),
+            "name": contract.organization.name,
+            "normalized_name": contract.organization.normalized_name,
+            "cnpj": contract.organization.cnpj,
+            "organization_type": contract.organization.organization_type,
+            "jurisdiction_level": contract.organization.jurisdiction_level,
+            "state_code": contract.organization.state_code,
+            "municipality_code": contract.organization.municipality_code,
+        }
+        if contract.organization
+        else None
+    )
+    payload["expenses"] = [
+        ExpenseResponse.model_validate(expense).model_dump(mode="json")
+        for expense in expenses
+    ]
+    payload["expense_total"] = str(sum((expense.amount or 0) for expense in expenses))
+    return payload

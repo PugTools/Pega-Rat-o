@@ -55,6 +55,10 @@ def task_run_political_ingestion(
     paginas_camara: int = 1,
     incluir_senado: bool = True,
     despesas_senado: bool = False,
+    incluir_tse: bool = False,
+    anos_tse: list[int] | None = None,
+    limite_tse_por_cargo: int = 50,
+    uf_tse: str | None = None,
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
@@ -67,6 +71,10 @@ def task_run_political_ingestion(
             paginas_camara=paginas_camara,
             incluir_senado=incluir_senado,
             despesas_senado=despesas_senado,
+            incluir_tse=incluir_tse,
+            anos_tse=anos_tse,
+            limite_tse_por_cargo=limite_tse_por_cargo,
+            uf_tse=uf_tse,
         )
         return result.to_dict()
     finally:

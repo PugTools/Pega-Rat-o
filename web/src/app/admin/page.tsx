@@ -91,7 +91,7 @@ export default function AdminPage() {
     try {
       const path =
         action === "politicians"
-          ? "/ingestion/politicians/run?sync=true&itens=100&paginas_camara=6&despesas_por_politico=0&incluir_senado=true"
+          ? "/ingestion/politicians/run?sync=true&itens=100&paginas_camara=6&despesas_por_politico=0&incluir_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50"
           : "/ingestion/run";
       const payload = await adminRequest<AdminActionResponse>(path, {
         method: "POST",
@@ -155,7 +155,7 @@ export default function AdminPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <ActionCard
           busy={runningAction === "politicians"}
-          description="Busca e salva agora deputados e senadores ativos com partido, UF, foto e email oficiais."
+          description="Busca e salva deputados, senadores e eleitos do TSE por cargo, partido e UF para preencher os paineis de politicos."
           onRun={() => runAction("politicians")}
           title="Atualizar politicos ativos"
         />
@@ -249,6 +249,8 @@ function ActionCard({
 function LastResultCard({ result }: { result: AdminActionResponse }) {
   const camaraCount = result.source_counts?.["dados-abertos-camara"] ?? 0;
   const senadoCount = result.source_counts?.["dados-abertos-senado"] ?? 0;
+  const tse2024Count = result.source_counts?.["dados-abertos-tse-2024"] ?? 0;
+  const tse2022Count = result.source_counts?.["dados-abertos-tse-2022"] ?? 0;
 
   return (
     <section className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
@@ -272,9 +274,10 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
           <ResultMetric label="Avisos" value={result.errors?.length ?? 0} />
         </div>
       </div>
-      {camaraCount || senadoCount ? (
+      {camaraCount || senadoCount || tse2024Count || tse2022Count ? (
         <p className="mt-4 text-xs text-emerald-900">
-          Fontes: Camara {camaraCount} registro(s), Senado {senadoCount} registro(s).
+          Fontes: Camara {camaraCount} registro(s), Senado {senadoCount} registro(s),
+          TSE 2024 {tse2024Count} registro(s), TSE 2022 {tse2022Count} registro(s).
         </p>
       ) : null}
     </section>

@@ -8,7 +8,7 @@ const navigation = [
 
 export function Navbar() {
   return (
-    <header className="border-b border-slate-200 bg-white lg:hidden">
+    <header className="border-b border-slate-200 bg-white print:hidden lg:hidden">
       <div className="flex items-center justify-between px-4 py-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">

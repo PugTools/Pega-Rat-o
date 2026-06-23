@@ -1,3 +1,4 @@
+import { ContractsExplorer } from "@/components/ContractsExplorer";
 import { api, type Contract } from "@/lib/api";
 
 const fallbackContracts: Contract[] = [
@@ -8,6 +9,17 @@ const fallbackContracts: Contract[] = [
     status: "monitorado",
     total_value: "1250000.00",
     created_at: new Date().toISOString(),
+    supplier: {
+      id: "mock-company-1",
+      legal_name: "Fornecedor Tecnologia Ltda",
+      cnpj: "00.000.000/0001-00",
+      created_at: new Date().toISOString(),
+    },
+    organization: {
+      id: "mock-org-1",
+      name: "Orgao demonstrativo",
+      normalized_name: "orgao demonstrativo",
+    },
   },
   {
     id: "mock-contract-2",
@@ -16,12 +28,23 @@ const fallbackContracts: Contract[] = [
     status: "em analise",
     total_value: "420000.00",
     created_at: new Date().toISOString(),
+    supplier: {
+      id: "mock-company-2",
+      legal_name: "Insumos Publicos SA",
+      cnpj: "11.111.111/0001-11",
+      created_at: new Date().toISOString(),
+    },
+    organization: {
+      id: "mock-org-2",
+      name: "Secretaria demonstrativa",
+      normalized_name: "secretaria demonstrativa",
+    },
   },
 ];
 
 async function getContracts(): Promise<{ contracts: Contract[]; isFallback: boolean }> {
   try {
-    const contracts = await api.listContracts(100);
+    const contracts = await api.listContracts({ limit: 1000 });
     return {
       contracts: contracts.length ? contracts : fallbackContracts,
       isFallback: contracts.length === 0,
@@ -29,13 +52,6 @@ async function getContracts(): Promise<{ contracts: Contract[]; isFallback: bool
   } catch {
     return { contracts: fallbackContracts, isFallback: true };
   }
-}
-
-function currency(value: string | number | null | undefined) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(value ?? 0));
 }
 
 export default async function ContratosPage() {
@@ -55,36 +71,7 @@ export default async function ContratosPage() {
         </span>
       </div>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Contrato</th>
-              <th className="px-4 py-3">Objeto</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Valor</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {contracts.map((contract) => (
-              <tr key={contract.id}>
-                <td className="px-4 py-3 font-medium text-slate-900">
-                  {contract.contract_number ?? "Sem numero"}
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {contract.object ?? "Nao informado"}
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {contract.status ?? "Nao informado"}
-                </td>
-                <td className="px-4 py-3 font-medium text-slate-900">
-                  {currency(contract.total_value)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      <ContractsExplorer contracts={contracts} isFallback={isFallback} />
     </div>
   );
 }

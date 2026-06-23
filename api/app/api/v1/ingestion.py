@@ -63,8 +63,13 @@ def trigger_political_ingestion(
     paginas_camara: int = Query(default=1, ge=1, le=20),
     incluir_senado: bool = Query(default=True),
     despesas_senado: bool = Query(default=False),
+    incluir_tse: bool = Query(default=False),
+    anos_tse: str = Query(default="2024,2022"),
+    limite_tse_por_cargo: int = Query(default=50, ge=1, le=500),
+    uf_tse: str | None = Query(default=None, min_length=2, max_length=2),
     sync: bool = Query(default=False),
 ) -> dict[str, Any]:
+    parsed_tse_years = _parse_tse_years(anos_tse)
     if sync:
         return _run_political_ingestion_now(
             db=db,
@@ -76,6 +81,10 @@ def trigger_political_ingestion(
             paginas_camara=paginas_camara,
             incluir_senado=incluir_senado,
             despesas_senado=despesas_senado,
+            incluir_tse=incluir_tse,
+            anos_tse=parsed_tse_years,
+            limite_tse_por_cargo=limite_tse_por_cargo,
+            uf_tse=uf_tse,
         )
 
     task = task_run_political_ingestion.delay(
@@ -86,6 +95,10 @@ def trigger_political_ingestion(
         paginas_camara=paginas_camara,
         incluir_senado=incluir_senado,
         despesas_senado=despesas_senado,
+        incluir_tse=incluir_tse,
+        anos_tse=parsed_tse_years,
+        limite_tse_por_cargo=limite_tse_por_cargo,
+        uf_tse=uf_tse,
     )
     _record_admin_task_submission(
         task_id=task.id,
@@ -106,6 +119,10 @@ def trigger_political_ingestion(
             "paginas_camara": paginas_camara,
             "incluir_senado": incluir_senado,
             "despesas_senado": despesas_senado,
+            "incluir_tse": incluir_tse,
+            "anos_tse": parsed_tse_years,
+            "limite_tse_por_cargo": limite_tse_por_cargo,
+            "uf_tse": uf_tse,
             "sync": sync,
         },
     }
@@ -121,6 +138,10 @@ def _run_political_ingestion_now(
     paginas_camara: int,
     incluir_senado: bool,
     despesas_senado: bool,
+    incluir_tse: bool,
+    anos_tse: list[int],
+    limite_tse_por_cargo: int,
+    uf_tse: str | None,
 ) -> dict[str, Any]:
     task_id = f"sync-political-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
     _record_admin_task_submission(
@@ -140,6 +161,10 @@ def _run_political_ingestion_now(
             paginas_camara=paginas_camara,
             incluir_senado=incluir_senado,
             despesas_senado=despesas_senado,
+            incluir_tse=incluir_tse,
+            anos_tse=anos_tse,
+            limite_tse_por_cargo=limite_tse_por_cargo,
+            uf_tse=uf_tse,
             sync_graph=False,
         )
     except Exception as exc:
@@ -170,6 +195,22 @@ def _run_political_ingestion_now(
         result=payload,
     )
     return payload
+
+
+def _parse_tse_years(value: str) -> list[int]:
+    years: list[int] = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            year = int(item)
+        except ValueError:
+            continue
+        if 1996 <= year <= datetime.now(timezone.utc).year:
+            years.append(year)
+
+    return years or [2024, 2022]
 
 
 def _record_admin_task_submission(

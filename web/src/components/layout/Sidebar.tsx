@@ -8,7 +8,7 @@ const navigation = [
 
 export function Sidebar() {
   return (
-    <aside className="hidden min-h-screen w-64 border-r border-slate-200 bg-white px-5 py-6 lg:block">
+    <aside className="hidden min-h-screen w-64 border-r border-slate-200 bg-white px-5 py-6 print:hidden lg:block">
       <div className="mb-8">
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           ONGP
