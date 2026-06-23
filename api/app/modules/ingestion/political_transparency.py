@@ -1,0 +1,276 @@
+import logging
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.core.cache import delete_pattern
+from app.db import repositories
+from app.db.models import Expense, Person
+from app.modules.graphs.sync_service import GraphSyncService
+from app.modules.ingestion.camara_senado_client import (
+    CamaraDadosAbertosClient,
+    SenadoDadosAbertosClient,
+)
+from app.schemas.core_schemas import ExpenseCreate, PersonCreate, PublicRoleCreate
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PoliticalIngestionResult:
+    politicians_found: int
+    politicians_saved: int
+    expenses_found: int
+    expenses_saved: int
+    expense_year: int
+    source_counts: dict[str, int]
+    errors: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "politicians_found": self.politicians_found,
+            "politicians_saved": self.politicians_saved,
+            "expenses_found": self.expenses_found,
+            "expenses_saved": self.expenses_saved,
+            "expense_year": self.expense_year,
+            "source_counts": self.source_counts,
+            "errors": self.errors,
+        }
+
+
+class PoliticalTransparencyIngestion:
+    def __init__(
+        self,
+        db: Session,
+        client: CamaraDadosAbertosClient | None = None,
+        camara_client: CamaraDadosAbertosClient | None = None,
+        senado_client: SenadoDadosAbertosClient | None = None,
+        graph_sync_service: GraphSyncService | None = None,
+    ) -> None:
+        self.db = db
+        self.camara_client = camara_client or client or CamaraDadosAbertosClient()
+        self.senado_client = senado_client or SenadoDadosAbertosClient()
+        self.graph_sync_service = graph_sync_service or GraphSyncService()
+
+    def run(
+        self,
+        pagina: int = 1,
+        itens: int = 25,
+        ano: int | None = None,
+        despesas_por_politico: int = 100,
+        paginas_camara: int = 1,
+        incluir_senado: bool = True,
+        despesas_senado: bool = False,
+    ) -> PoliticalIngestionResult:
+        expense_year = ano or date.today().year
+        errors: list[str] = []
+        source_counts: dict[str, int] = {}
+
+        politicians = self._fetch_politicians(
+            pagina=pagina,
+            itens=itens,
+            paginas_camara=paginas_camara,
+            incluir_senado=incluir_senado,
+            errors=errors,
+            source_counts=source_counts,
+        )
+
+        if not politicians and errors:
+            return PoliticalIngestionResult(
+                politicians_found=0,
+                politicians_saved=0,
+                expenses_found=0,
+                expenses_saved=0,
+                expense_year=expense_year,
+                source_counts=source_counts,
+                errors=errors,
+            )
+
+        saved_people: list[Person] = []
+        saved_expenses: list[Expense] = []
+        expenses_found = 0
+
+        for politician_payload in politicians:
+            try:
+                person = repositories.upsert_person(self.db, politician_payload)
+                self._upsert_public_role(person, politician_payload, errors)
+                saved_people.append(person)
+            except Exception as exc:
+                errors.append(
+                    f"politician_persist_failed:{politician_payload.external_id}: {exc}"
+                )
+                continue
+
+            politician_expenses = self._fetch_expenses_for_person(
+                politician_payload=politician_payload,
+                expense_year=expense_year,
+                despesas_por_politico=despesas_por_politico,
+                despesas_senado=despesas_senado,
+                errors=errors,
+            )
+            expenses_found += len(politician_expenses)
+
+            persisted_expenses = self._persist_person_expenses(
+                person=person,
+                expenses=politician_expenses,
+                errors=errors,
+            )
+            saved_expenses.extend(persisted_expenses)
+            self._update_person_expense_summary(person, persisted_expenses, expense_year)
+            self._sync_person_to_graph(person, errors)
+
+        if errors:
+            logger.warning("political_ingestion_completed_with_errors: %s", errors)
+
+        self.db.commit()
+        delete_pattern("persons:*")
+
+        return PoliticalIngestionResult(
+            politicians_found=len(politicians),
+            politicians_saved=len(saved_people),
+            expenses_found=expenses_found,
+            expenses_saved=len(saved_expenses),
+            expense_year=expense_year,
+            source_counts=source_counts,
+            errors=errors,
+        )
+
+    def _fetch_politicians(
+        self,
+        pagina: int,
+        itens: int,
+        paginas_camara: int,
+        incluir_senado: bool,
+        errors: list[str],
+        source_counts: dict[str, int],
+    ) -> list[PersonCreate]:
+        politicians: list[PersonCreate] = []
+
+        try:
+            deputados = self.camara_client.fetch_deputados_pages(
+                pagina=pagina,
+                paginas=paginas_camara,
+                itens=itens,
+            )
+            source_counts["dados-abertos-camara"] = len(deputados)
+            politicians.extend(deputados)
+        except Exception as exc:
+            errors.append(f"camara_politicians_fetch_failed: {exc}")
+
+        if incluir_senado:
+            try:
+                senadores = self.senado_client.fetch_senadores()
+                source_counts["dados-abertos-senado"] = len(senadores)
+                politicians.extend(senadores)
+            except Exception as exc:
+                errors.append(f"senado_politicians_fetch_failed: {exc}")
+
+        return politicians
+
+    def _fetch_expenses_for_person(
+        self,
+        politician_payload: PersonCreate,
+        expense_year: int,
+        despesas_por_politico: int,
+        despesas_senado: bool,
+        errors: list[str],
+    ) -> list[ExpenseCreate]:
+        if not politician_payload.external_id:
+            return []
+
+        if politician_payload.data_origin == "dados-abertos-senado" and not despesas_senado:
+            return []
+
+        try:
+            if politician_payload.data_origin == "dados-abertos-senado":
+                expenses = self.senado_client.fetch_senador_despesas(
+                    senador_id=politician_payload.external_id,
+                    ano=expense_year,
+                )
+            else:
+                expenses = self.camara_client.fetch_deputado_despesas_pages(
+                    deputado_id=politician_payload.external_id,
+                    ano=expense_year,
+                    limit=despesas_por_politico,
+                )
+        except Exception as exc:
+            errors.append(
+                f"politician_expenses_fetch_failed:{politician_payload.external_id}: {exc}"
+            )
+            return []
+
+        return expenses[:despesas_por_politico]
+
+    def _upsert_public_role(
+        self,
+        person: Person,
+        politician_payload: PersonCreate,
+        errors: list[str],
+    ) -> None:
+        role_name = {
+            "dados-abertos-camara": "Deputado Federal",
+            "dados-abertos-senado": "Senador",
+        }.get(politician_payload.data_origin or "")
+
+        if not role_name:
+            return
+
+        try:
+            repositories.upsert_public_role(
+                self.db,
+                PublicRoleCreate(
+                    person_id=person.id,
+                    role_name=role_name,
+                    branch="legislativo",
+                    jurisdiction_level="federal",
+                    state_code=politician_payload.state_code,
+                    party_acronym=politician_payload.party_acronym,
+                ),
+            )
+        except Exception as exc:
+            errors.append(f"politician_role_persist_failed:{person.id}: {exc}")
+
+    def _persist_person_expenses(
+        self,
+        person: Person,
+        expenses: list[ExpenseCreate],
+        errors: list[str],
+    ) -> list[Expense]:
+        saved: list[Expense] = []
+        for expense in expenses:
+            try:
+                payload = expense.model_copy(
+                    update={
+                        "person_id": person.id,
+                        "state_code": person.state_code,
+                    }
+                )
+                saved.append(repositories.upsert_expense(self.db, payload))
+            except Exception as exc:
+                errors.append(f"politician_expense_persist_failed:{person.id}: {exc}")
+        return saved
+
+    def _update_person_expense_summary(
+        self,
+        person: Person,
+        expenses: list[Expense],
+        expense_year: int,
+    ) -> None:
+        if not expenses:
+            return
+
+        total = sum((expense.amount or Decimal("0")) for expense in expenses)
+        person.latest_expense_total = total
+        person.latest_expense_year = expense_year
+        self.db.flush()
+
+    def _sync_person_to_graph(self, person: Person, errors: list[str]) -> None:
+        try:
+            self.graph_sync_service.sync_person(person)
+        except Exception as exc:
+            logger.exception("politician_graph_sync_failed")
+            errors.append(f"politician_graph_sync_failed:{person.id}: {exc}")

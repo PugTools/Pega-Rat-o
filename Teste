@@ -1,0 +1,1221 @@
+# Observatorio Nacional de Gastos Publicos (ONGP)
+
+Nome publico: **Observatorio Nacional de Gastos Publicos**  
+Codinome interno: **PEGA RATAO**  
+Modelo: SaaS GovTech / CivicTech para monitoramento, auditoria e correlacao de gastos publicos brasileiros.
+
+> Nota de conformidade: o sistema deve operar apenas com bases publicas, dados legalmente acessiveis, convenios formais ou autorizacoes explicitas. Dados pessoais sensiveis, CPF integral, patrimonio individual e bases restritas devem seguir LGPD, LAI, normas dos tribunais de contas e parecer juridico especifico.
+
+---
+
+## 1. Visao Geral
+
+O ONGP e uma plataforma nacional para centralizar, normalizar, monitorar, auditar e correlacionar informacoes financeiras relacionadas a agentes publicos, orgaos, contratos, fornecedores, emendas, licitacoes, convenios e despesas.
+
+O objetivo e oferecer uma camada unificada de inteligencia publica sobre dados hoje fragmentados em portais federais, estaduais, municipais e legislativos.
+
+### Publicos-alvo
+
+- Orgaos de controle interno e externo.
+- Tribunais de contas.
+- Ministerio Publico.
+- Controladorias.
+- Jornalismo investigativo.
+- Organizacoes da sociedade civil.
+- Pesquisadores.
+- Cidadaos, em uma versao publica com dados agregados e mascarados.
+
+### Principios do Produto
+
+- Transparencia verificavel: toda analise deve apontar a fonte original.
+- Auditabilidade: cada coleta, transformacao e acesso deve deixar trilha.
+- Legalidade por desenho: LGPD, LAI e minimizacao de dados desde a arquitetura.
+- Escala nacional: preparado para milhares de portais, formatos e atualizacoes.
+- Explicabilidade: alertas e modelos de IA devem explicar o motivo da suspeita.
+- Separacao entre indicio e conclusao: o sistema aponta risco; nao declara culpa.
+
+---
+
+## 2. Escopo Funcional
+
+### Entidades monitoradas
+
+- Presidente da Republica.
+- Vice-presidente.
+- Ministros.
+- Senadores.
+- Deputados federais.
+- Deputados estaduais/distritais.
+- Governadores.
+- Prefeitos.
+- Vereadores.
+- Secretarios.
+- Assessores vinculados.
+- Empresas contratadas.
+- Fornecedores publicos.
+- Socios de empresas, quando a base legal permitir.
+- Orgaos, unidades gestoras e entidades da administracao direta e indireta.
+
+### Dados analisados
+
+- Despesas.
+- Empenhos, liquidacoes e pagamentos.
+- Contratos.
+- Aditivos.
+- Licitacoes.
+- Dispensas e inexigibilidades.
+- Convenios.
+- Emendas parlamentares.
+- Diarias e passagens.
+- Cotas parlamentares.
+- Repasses.
+- Diarios oficiais.
+- Dados cadastrais de fornecedores.
+- Vinculos publicos entre pessoas, cargos, partidos, empresas e orgaos.
+
+---
+
+## 3. Fontes de Dados
+
+### Governo Federal
+
+- Portal da Transparencia.
+- SIAFI, quando acessivel por integracao autorizada.
+- ComprasGov.
+- Tesouro Nacional.
+- Dados Abertos do Governo Federal.
+- Camara dos Deputados.
+- Senado Federal.
+- TSE.
+- CGU.
+- TCU.
+- Diarios Oficiais da Uniao.
+
+### Estados
+
+- Portais de transparencia estaduais.
+- Secretarias de fazenda estaduais.
+- Assembleias legislativas.
+- Tribunais de contas estaduais.
+- Diarios oficiais estaduais.
+- Portais de compras e licitacoes estaduais.
+
+### Municipios
+
+- Portais de transparencia municipais.
+- Camaras municipais.
+- Tribunais de contas municipais, onde existirem.
+- Diarios oficiais municipais ou consorciados.
+- Portais de compras, licitacoes, contratos e folha.
+
+### Outras fontes
+
+- Receita Federal e CNPJ somente por meios legalmente permitidos.
+- Dados publicos de CNPJ.
+- Contratos publicos.
+- Convenios.
+- Emendas parlamentares.
+- Diarios oficiais.
+- Licitacoes.
+- Cadastros de empresas fornecedoras.
+
+---
+
+## 4. Arquitetura Geral
+
+### Visao em camadas
+
+```text
+Fontes Publicas
+  -> Crawlers / APIs / ETL / OCR
+  -> Fila de Ingestao
+  -> Data Lake Bruto
+  -> Normalizacao e Qualidade
+  -> Bancos Operacionais e Analiticos
+  -> Motor de Regras + IA
+  -> Alertas / Relatorios / Dashboards / API Publica
+```
+
+### Componentes principais
+
+- **API Gateway / Nginx**: entrada unica, TLS, rate limit e roteamento.
+- **Backend FastAPI**: APIs REST, autenticacao, RBAC, consultas e orquestracao.
+- **Workers Celery**: coleta, parsing, OCR, enriquecimento e processamento assincrono.
+- **Redis**: filas, cache, locks distribuidos e rate limiting.
+- **PostgreSQL**: dados estruturados, transacionais e historicos normalizados.
+- **ElasticSearch/OpenSearch**: busca textual, fuzzy search, filtros e exploracao.
+- **Neo4j**: grafos de relacionamento entre politicos, empresas, socios, contratos e orgaos.
+- **Object Storage S3 compativel**: PDFs, imagens, arquivos brutos, evidencias e snapshots.
+- **IA/Auditoria**: deteccao de anomalias, explicacao de alertas e geracao de relatorios.
+- **Frontend Next.js**: dashboards administrativo, publico e investigativo.
+- **Observabilidade**: Prometheus, Grafana, Loki/ELK e tracing distribuido.
+
+### Arquitetura de deploy
+
+```text
+Internet
+  -> CDN/WAF
+  -> Nginx / API Gateway
+  -> Next.js Web
+  -> FastAPI Services
+  -> Redis / Celery Workers
+  -> PostgreSQL
+  -> ElasticSearch
+  -> Neo4j
+  -> Object Storage
+  -> Monitoring Stack
+```
+
+---
+
+## 5. Modulo de Coleta
+
+### Tipos de conectores
+
+- API REST JSON.
+- API XML/SOAP.
+- Download CSV.
+- Download XLSX.
+- Scraping HTML.
+- PDF textual.
+- PDF digitalizado com OCR.
+- Imagens.
+- Diarios oficiais.
+- Feeds RSS/Atom, quando existirem.
+
+### Estrategia de coleta
+
+- Atualizacao diaria por padrao.
+- Atualizacao intradiaria para fontes criticas.
+- Atualizacao em tempo real quando houver webhook, feed ou API de eventos.
+- Versionamento de cada captura.
+- Snapshot bruto preservado para auditoria.
+- Hash SHA-256 dos arquivos coletados.
+- Controle de mudancas entre capturas.
+
+### Pipeline de ingestao
+
+```text
+Agendador
+  -> Descoberta de fonte
+  -> Download ou captura
+  -> Validacao de integridade
+  -> Armazenamento bruto
+  -> Parser especifico
+  -> Normalizacao
+  -> Deduplicacao
+  -> Enriquecimento
+  -> Persistencia
+  -> Indexacao
+  -> Analise de risco
+  -> Alertas
+```
+
+### Tratamento de OCR
+
+- Extracao com Tesseract ou servico gerenciado.
+- Pre-processamento de imagem: deskew, binarizacao, aumento de contraste.
+- Classificacao de documento.
+- Extracao de entidades: CNPJ, CPF mascarado, orgao, valor, data, contrato, processo.
+- Score de confianca por campo.
+- Revisao humana quando a confianca ficar abaixo do limite.
+
+---
+
+## 6. Banco de Dados
+
+### PostgreSQL
+
+Responsavel por dados estruturados e consultas transacionais/analiticas.
+
+#### Tabelas principais
+
+```sql
+CREATE TABLE sources (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    jurisdiction TEXT,
+    base_url TEXT,
+    source_type TEXT NOT NULL,
+    legal_basis TEXT,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE ingestion_runs (
+    id UUID PRIMARY KEY,
+    source_id UUID NOT NULL REFERENCES sources(id),
+    status TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ,
+    records_found INTEGER DEFAULT 0,
+    records_created INTEGER DEFAULT 0,
+    records_updated INTEGER DEFAULT 0,
+    error_message TEXT
+);
+
+CREATE TABLE raw_documents (
+    id UUID PRIMARY KEY,
+    source_id UUID NOT NULL REFERENCES sources(id),
+    ingestion_run_id UUID REFERENCES ingestion_runs(id),
+    original_url TEXT,
+    storage_uri TEXT NOT NULL,
+    mime_type TEXT,
+    sha256 TEXT NOT NULL,
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE persons (
+    id UUID PRIMARY KEY,
+    full_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    masked_cpf TEXT,
+    birth_year INTEGER,
+    data_origin TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public_roles (
+    id UUID PRIMARY KEY,
+    person_id UUID NOT NULL REFERENCES persons(id),
+    role_name TEXT NOT NULL,
+    branch TEXT,
+    jurisdiction_level TEXT,
+    state_code CHAR(2),
+    municipality_code TEXT,
+    party_acronym TEXT,
+    organization_id UUID,
+    start_date DATE,
+    end_date DATE,
+    source_id UUID REFERENCES sources(id)
+);
+
+CREATE TABLE organizations (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    cnpj TEXT,
+    organization_type TEXT,
+    jurisdiction_level TEXT,
+    state_code CHAR(2),
+    municipality_code TEXT
+);
+
+CREATE TABLE companies (
+    id UUID PRIMARY KEY,
+    legal_name TEXT NOT NULL,
+    trade_name TEXT,
+    cnpj TEXT NOT NULL UNIQUE,
+    cnae TEXT,
+    city TEXT,
+    state_code CHAR(2),
+    registration_status TEXT,
+    source_id UUID REFERENCES sources(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE company_partners (
+    id UUID PRIMARY KEY,
+    company_id UUID NOT NULL REFERENCES companies(id),
+    partner_name TEXT NOT NULL,
+    masked_cpf TEXT,
+    partner_type TEXT,
+    start_date DATE,
+    source_id UUID REFERENCES sources(id)
+);
+
+CREATE TABLE contracts (
+    id UUID PRIMARY KEY,
+    contract_number TEXT,
+    process_number TEXT,
+    organization_id UUID REFERENCES organizations(id),
+    supplier_company_id UUID REFERENCES companies(id),
+    object TEXT,
+    modality TEXT,
+    status TEXT,
+    signed_at DATE,
+    starts_at DATE,
+    ends_at DATE,
+    total_value NUMERIC(18,2),
+    source_id UUID REFERENCES sources(id),
+    raw_document_id UUID REFERENCES raw_documents(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE contract_amendments (
+    id UUID PRIMARY KEY,
+    contract_id UUID NOT NULL REFERENCES contracts(id),
+    amendment_number TEXT,
+    amendment_type TEXT,
+    signed_at DATE,
+    value_delta NUMERIC(18,2),
+    new_total_value NUMERIC(18,2),
+    description TEXT,
+    raw_document_id UUID REFERENCES raw_documents(id)
+);
+
+CREATE TABLE expenses (
+    id UUID PRIMARY KEY,
+    organization_id UUID REFERENCES organizations(id),
+    person_id UUID REFERENCES persons(id),
+    company_id UUID REFERENCES companies(id),
+    contract_id UUID REFERENCES contracts(id),
+    expense_type TEXT,
+    description TEXT,
+    commitment_number TEXT,
+    liquidation_number TEXT,
+    payment_number TEXT,
+    amount NUMERIC(18,2) NOT NULL,
+    expense_date DATE NOT NULL,
+    fiscal_year INTEGER NOT NULL,
+    state_code CHAR(2),
+    municipality_code TEXT,
+    source_id UUID REFERENCES sources(id),
+    raw_document_id UUID REFERENCES raw_documents(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE bids (
+    id UUID PRIMARY KEY,
+    organization_id UUID REFERENCES organizations(id),
+    bid_number TEXT,
+    process_number TEXT,
+    modality TEXT,
+    object TEXT,
+    estimated_value NUMERIC(18,2),
+    opening_date DATE,
+    status TEXT,
+    winner_company_id UUID REFERENCES companies(id),
+    source_id UUID REFERENCES sources(id)
+);
+
+CREATE TABLE amendments (
+    id UUID PRIMARY KEY,
+    author_person_id UUID REFERENCES persons(id),
+    beneficiary_organization_id UUID REFERENCES organizations(id),
+    amendment_number TEXT,
+    fiscal_year INTEGER,
+    amount NUMERIC(18,2),
+    purpose TEXT,
+    state_code CHAR(2),
+    municipality_code TEXT,
+    source_id UUID REFERENCES sources(id)
+);
+
+CREATE TABLE relationships (
+    id UUID PRIMARY KEY,
+    from_entity_type TEXT NOT NULL,
+    from_entity_id UUID NOT NULL,
+    to_entity_type TEXT NOT NULL,
+    to_entity_id UUID NOT NULL,
+    relationship_type TEXT NOT NULL,
+    confidence NUMERIC(5,4) NOT NULL DEFAULT 1,
+    evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_id UUID REFERENCES sources(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE risk_alerts (
+    id UUID PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id UUID NOT NULL,
+    alert_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    score NUMERIC(6,3) NOT NULL,
+    title TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE roles (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT
+);
+
+CREATE TABLE user_roles (
+    user_id UUID NOT NULL REFERENCES users(id),
+    role_id UUID NOT NULL REFERENCES roles(id),
+    PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    action TEXT NOT NULL,
+    resource_type TEXT,
+    resource_id TEXT,
+    ip_address INET,
+    user_agent TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    previous_hash TEXT,
+    current_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+### Indices recomendados
+
+```sql
+CREATE INDEX idx_expenses_date ON expenses(expense_date);
+CREATE INDEX idx_expenses_person ON expenses(person_id);
+CREATE INDEX idx_expenses_company ON expenses(company_id);
+CREATE INDEX idx_expenses_org_year ON expenses(organization_id, fiscal_year);
+CREATE INDEX idx_contracts_supplier ON contracts(supplier_company_id);
+CREATE INDEX idx_contracts_org ON contracts(organization_id);
+CREATE INDEX idx_persons_normalized_name ON persons(normalized_name);
+CREATE INDEX idx_companies_cnpj ON companies(cnpj);
+CREATE INDEX idx_relationships_from ON relationships(from_entity_type, from_entity_id);
+CREATE INDEX idx_relationships_to ON relationships(to_entity_type, to_entity_id);
+CREATE INDEX idx_alerts_entity ON risk_alerts(entity_type, entity_id);
+CREATE INDEX idx_alerts_severity_status ON risk_alerts(severity, status);
+```
+
+### ElasticSearch / OpenSearch
+
+Indices:
+
+- `ongp_persons`
+- `ongp_companies`
+- `ongp_contracts`
+- `ongp_expenses`
+- `ongp_bids`
+- `ongp_documents`
+- `ongp_alerts`
+
+Campos especiais:
+
+- `name.ngram`
+- `name.keyword`
+- `cnpj.keyword`
+- `masked_cpf.keyword`
+- `full_text`
+- `jurisdiction`
+- `state_code`
+- `municipality_code`
+- `amount`
+- `date`
+- `source_name`
+
+### Neo4j
+
+Nos:
+
+- `Person`
+- `PublicRole`
+- `Organization`
+- `Company`
+- `Partner`
+- `Contract`
+- `Expense`
+- `Amendment`
+- `Bid`
+- `Source`
+
+Relacionamentos:
+
+- `(:Person)-[:OCCUPIES]->(:PublicRole)`
+- `(:Person)-[:ASSISTED_BY]->(:Person)`
+- `(:Person)-[:AUTHORED]->(:Amendment)`
+- `(:Organization)-[:SIGNED]->(:Contract)`
+- `(:Company)-[:SUPPLIES]->(:Organization)`
+- `(:Company)-[:PARTNER_IS]->(:Partner)`
+- `(:Contract)-[:PAID_BY]->(:Expense)`
+- `(:Contract)-[:HAS_SUPPLIER]->(:Company)`
+- `(:Bid)-[:AWARDED_TO]->(:Company)`
+- `(:Company)-[:RELATED_TO]->(:Company)`
+
+---
+
+## 7. Mapeamento de Relacionamentos
+
+### Relacoes obrigatorias
+
+- Politico <-> Assessor.
+- Politico <-> Empresa.
+- Politico <-> Contrato.
+- Politico <-> Emenda.
+- Politico <-> Fornecedor.
+- Empresa <-> Empresa.
+- Empresa <-> Socio.
+- Orgao <-> Contrato.
+- Orgao <-> Fornecedor.
+- Fornecedor <-> Licitacao.
+
+### Regras de correlacao
+
+- Mesmo CNPJ em contratos de multiplos orgaos.
+- Socio em comum entre empresas fornecedoras.
+- Endereco, telefone ou e-mail em comum entre fornecedores.
+- Fornecedor vencedor recorrente em orgao especifico.
+- Contratos sucessivos com objeto similar.
+- Despesas fracionadas abaixo de limite legal.
+- Emendas direcionadas a orgaos que contratam fornecedores relacionados.
+- Vinculo temporal entre cargo publico, contrato e pagamento.
+
+### Visualizacao em rede
+
+Recursos esperados:
+
+- Busca de entidade raiz.
+- Expansao por grau de relacionamento.
+- Filtros por periodo, valor, fonte, jurisdicao e tipo de relacao.
+- Destaque de risco por cor e espessura da aresta.
+- Painel lateral com evidencias.
+- Exportacao PNG, PDF e CSV.
+
+---
+
+## 8. Inteligencia Artificial e Auditoria
+
+### Agente IA de auditoria publica
+
+Funcoes:
+
+- Detectar gastos atipicos.
+- Identificar contratos repetidos.
+- Apontar crescimento anormal.
+- Detectar fragmentacao de despesas.
+- Medir concentracao em fornecedores.
+- Gerar explicacoes em linguagem natural.
+- Sugerir proximas investigacoes.
+- Produzir relatorios automatizados.
+
+### Modelos e tecnicas
+
+- Regras deterministicas para red flags juridicamente conhecidas.
+- Estatistica robusta: z-score, IQR, mediana movel e variacao percentual.
+- Series temporais: decomposicao sazonal e deteccao de mudanca.
+- Grafos: centralidade, comunidades, caminhos curtos e componentes densos.
+- Embeddings para similaridade de objetos contratuais.
+- Classificacao supervisionada quando houver bases rotuladas.
+- RAG com base documental para explicar evidencias sem inventar fatos.
+
+### Exemplos de alertas
+
+- "Este contrato apresenta aumento de 380% em relacao a media historica de contratos similares do mesmo orgao."
+- "Fornecedor concentra 72% dos pagamentos da categoria no municipio nos ultimos 12 meses."
+- "Foram encontradas 9 despesas similares em 14 dias, todas abaixo do limite configurado."
+- "Empresa vencedora possui socio em comum com outro fornecedor contratado pelo mesmo orgao."
+- "Objeto do contrato e semanticamente similar a contratos anteriores com aditivos sucessivos."
+
+### Score de risco
+
+```text
+score_final =
+  peso_valor * risco_valor +
+  peso_recorrencia * risco_recorrencia +
+  peso_concentracao * risco_concentracao +
+  peso_grafo * risco_relacionamento +
+  peso_temporal * risco_temporal +
+  peso_documental * risco_documental
+```
+
+Classificacao:
+
+- 0 a 30: baixo.
+- 31 a 60: medio.
+- 61 a 80: alto.
+- 81 a 100: critico.
+
+---
+
+## 9. APIs REST
+
+Base path: `/api/v1`
+
+### Autenticacao
+
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `POST /auth/mfa/verify`
+
+### Busca
+
+- `GET /search?q=&type=&state=&city=&from=&to=`
+- `GET /persons?name=&party=&role=&state=`
+- `GET /companies?name=&cnpj=&state=`
+- `GET /organizations?name=&level=&state=&city=`
+
+### Entidades
+
+- `GET /persons/{id}`
+- `GET /persons/{id}/expenses`
+- `GET /persons/{id}/roles`
+- `GET /persons/{id}/relationships`
+- `GET /companies/{id}`
+- `GET /companies/{id}/contracts`
+- `GET /companies/{id}/relationships`
+- `GET /contracts/{id}`
+- `GET /contracts/{id}/documents`
+- `GET /expenses/{id}`
+- `GET /bids/{id}`
+
+### Dashboards
+
+- `GET /dashboard/summary`
+- `GET /dashboard/rankings/expenses`
+- `GET /dashboard/rankings/contracts`
+- `GET /dashboard/rankings/suppliers`
+- `GET /dashboard/timeseries?group_by=day|month|year`
+- `GET /dashboard/map?metric=expenses|contracts|alerts`
+
+### Grafos
+
+- `GET /graphs/entity/{entity_type}/{entity_id}`
+- `GET /graphs/path?from_type=&from_id=&to_type=&to_id=`
+- `GET /graphs/neighborhood?entity_type=&entity_id=&depth=`
+
+### Alertas
+
+- `GET /alerts?severity=&status=&type=`
+- `GET /alerts/{id}`
+- `POST /alerts/{id}/assign`
+- `POST /alerts/{id}/status`
+- `POST /alerts/rules`
+- `GET /alerts/rules`
+
+### Coleta
+
+- `GET /sources`
+- `POST /sources`
+- `GET /sources/{id}`
+- `POST /sources/{id}/run`
+- `GET /ingestion-runs`
+- `GET /ingestion-runs/{id}`
+
+### Relatorios
+
+- `POST /reports`
+- `GET /reports/{id}`
+- `GET /reports/{id}/download?format=pdf|xlsx|csv`
+
+### Administracao
+
+- `GET /admin/users`
+- `POST /admin/users`
+- `PATCH /admin/users/{id}`
+- `GET /admin/audit-logs`
+- `GET /admin/system-health`
+
+---
+
+## 10. Dashboards
+
+### Dashboard executivo
+
+Indicadores:
+
+- Gastos totais.
+- Numero de contratos.
+- Valor contratado.
+- Valor pago.
+- Alertas abertos.
+- Alertas criticos.
+- Fornecedores mais contratados.
+- Entidades com maior risco.
+- Evolucao diaria, mensal e anual.
+
+Segmentacoes:
+
+- Pessoa.
+- Cargo.
+- Partido.
+- Estado.
+- Municipio.
+- Orgao.
+- Empresa.
+- Tipo de despesa.
+- Fonte.
+
+### Rankings
+
+- Maiores despesas.
+- Maiores contratos.
+- Maiores fornecedores.
+- Maiores variacoes percentuais.
+- Maiores concentracoes por orgao.
+- Maiores redes de relacionamento.
+- Municipios com maior volume de alertas.
+
+### Mapas
+
+- Mapa nacional por UF.
+- Drill-down para municipio.
+- Camadas por despesa, contrato, fornecedor, emenda e alerta.
+- Escala por valor e severidade.
+
+---
+
+## 11. Wireframes Textuais
+
+### Dashboard publico
+
+```text
++---------------------------------------------------------------+
+| ONGP / PEGA RATAO        Busca nacional...       Entrar       |
++---------------------------------------------------------------+
+| Gastos no periodo | Contratos | Fornecedores | Alertas        |
++---------------------------------------------------------------+
+| Mapa do Brasil                         | Ranking nacional     |
+| - filtro por UF                        | 1. Orgao A           |
+| - filtro por municipio                 | 2. Empresa B         |
+| - metrica selecionavel                 | 3. Municipio C       |
++---------------------------------------------------------------+
+| Evolucao temporal                                             |
++---------------------------------------------------------------+
+| Ultimos alertas publicos com dados agregados e fonte          |
++---------------------------------------------------------------+
+```
+
+### Dashboard administrativo
+
+```text
++----------------------------------------------------------------+
+| Menu | Painel de Controle                                      |
+|      | KPIs: coletas, fontes, erros, alertas, filas             |
+|      +---------------------------------------------------------+
+|      | Saude das fontes              | Alertas criticos         |
+|      | - Portal X ok                 | - Contrato 123           |
+|      | - Portal Y erro               | - Fornecedor ABC         |
+|      +---------------------------------------------------------+
+|      | Execucoes de ingestao                                   |
+|      | Fonte | Status | Registros | Duracao | Erro             |
++----------------------------------------------------------------+
+```
+
+### Tela investigativa de entidade
+
+```text
++----------------------------------------------------------------+
+| Pessoa/Empresa: Nome da entidade                               |
++----------------------------------------------------------------+
+| Resumo | Gastos | Contratos | Relacoes | Documentos | Alertas  |
++----------------------------------------------------------------+
+| KPIs da entidade                                               |
++----------------------------------------------------------------+
+| Grafo interativo                 | Evidencias selecionadas      |
+|                                  | Fonte, data, documento       |
++----------------------------------------------------------------+
+| Linha do tempo de eventos                                      |
++----------------------------------------------------------------+
+```
+
+### Tela de alerta
+
+```text
++----------------------------------------------------------------+
+| Alerta critico: aumento anormal de contrato                    |
++----------------------------------------------------------------+
+| Score | Severidade | Entidade | Fonte | Data                   |
++----------------------------------------------------------------+
+| Explicacao IA                                                  |
+| Evidencias                                                     |
+| Comparativos historicos                                        |
+| Documentos originais                                           |
++----------------------------------------------------------------+
+| Acoes: atribuir, comentar, alterar status, exportar relatorio  |
++----------------------------------------------------------------+
+```
+
+---
+
+## 12. Sistema de Alertas
+
+### Canais
+
+- E-mail.
+- WhatsApp via provedor autorizado.
+- Telegram Bot.
+- Discord Webhook.
+- Webhook generico.
+
+### Gatilhos
+
+- Nova despesa relevante.
+- Contrato acima de limite configurado.
+- Mudanca patrimonial registrada em base publica, quando legalmente utilizavel.
+- Nova licitacao.
+- Fornecedor recorrente.
+- Fragmentacao suspeita.
+- Aditivo acima de percentual configurado.
+- Crescimento anormal de gasto por categoria.
+
+### Configuracao por usuario
+
+- Jurisdicoes monitoradas.
+- Entidades monitoradas.
+- Tipos de alerta.
+- Limites monetarios.
+- Severidade minima.
+- Frequencia: tempo real, diario, semanal.
+
+---
+
+## 13. Relatorios
+
+### Formatos
+
+- PDF.
+- Excel/XLSX.
+- CSV.
+
+### Conteudo
+
+- Sumario executivo.
+- Graficos.
+- Tabelas.
+- Linha do tempo.
+- Relacoes encontradas.
+- Evidencias.
+- Fontes originais.
+- Metodologia do score.
+- Limitacoes da analise.
+
+### Tipos
+
+- Relatorio por pessoa.
+- Relatorio por empresa.
+- Relatorio por orgao.
+- Relatorio por municipio.
+- Relatorio por contrato.
+- Relatorio de alerta.
+- Relatorio periodico de riscos.
+
+---
+
+## 14. Seguranca, LGPD e Governanca
+
+### Controles de seguranca
+
+- TLS 1.3 em transito.
+- Criptografia AES-256 em repouso.
+- Hash de senhas com Argon2id ou bcrypt forte.
+- MFA para usuarios administrativos.
+- RBAC por perfil.
+- ABAC opcional por jurisdicao e orgao.
+- Segregacao entre ambiente publico e investigativo.
+- Rate limit e protecao contra scraping abusivo.
+- WAF.
+- Backups criptografados.
+- Rotacao de segredos.
+- Cofre de segredos: AWS Secrets Manager, Azure Key Vault, GCP Secret Manager ou Vault.
+
+### LGPD
+
+- Minimizar dados pessoais.
+- Mascarar CPF por padrao.
+- Registrar base legal por fonte.
+- Controlar finalidade de uso.
+- Trilhas de auditoria de acesso.
+- Retencao configuravel.
+- Politica de revisao e remocao quando exigida legalmente.
+- DPIA/RIPD antes de producao.
+
+### Logs imutaveis
+
+- Encadeamento de hash em `audit_logs`.
+- Exportacao para storage WORM.
+- Assinatura de lotes diarios.
+- Retencao conforme politica juridica.
+
+### Perfis RBAC
+
+- `public_viewer`: acesso publico agregado.
+- `analyst`: consultas detalhadas autorizadas.
+- `auditor`: alertas, relatorios e evidencias.
+- `source_admin`: gestao de fontes e coletas.
+- `system_admin`: usuarios, permissoes e configuracoes.
+- `compliance_officer`: auditoria, LGPD e retencao.
+
+---
+
+## 15. Fluxogramas
+
+### Coleta e normalizacao
+
+```text
+Inicio
+  -> Selecionar fonte ativa
+  -> Verificar janela de coleta
+  -> Capturar dados
+  -> Salvar bruto
+  -> Validar formato
+  -> Parser especifico
+  -> Normalizar campos
+  -> Deduplicar
+  -> Persistir
+  -> Indexar
+  -> Gerar eventos
+Fim
+```
+
+### Geracao de alerta
+
+```text
+Novo evento financeiro
+  -> Aplicar regras deterministicas
+  -> Calcular indicadores estatisticos
+  -> Consultar grafo de relacionamentos
+  -> Calcular score
+  -> Gerar explicacao
+  -> Salvar alerta
+  -> Enviar notificacao conforme preferencia
+```
+
+### Investigacao
+
+```text
+Usuario pesquisa entidade
+  -> Sistema retorna perfil
+  -> Usuario abre grafo
+  -> Expande relacoes
+  -> Seleciona alerta
+  -> Consulta evidencias
+  -> Gera relatorio
+  -> Registra decisao ou encaminhamento
+```
+
+---
+
+## 16. Stack Tecnica
+
+### Backend
+
+- Python 3.12+.
+- FastAPI.
+- SQLAlchemy.
+- Alembic.
+- Pydantic.
+- PostgreSQL.
+- Neo4j.
+- Redis.
+- Celery.
+- OpenSearch/ElasticSearch.
+- MinIO/S3.
+
+### Frontend
+
+- React.
+- Next.js.
+- TypeScript.
+- Tailwind CSS.
+- TanStack Query.
+- Zustand ou Redux Toolkit.
+- Recharts/ECharts para graficos.
+- MapLibre/Leaflet para mapas.
+- Cytoscape.js ou Sigma.js para grafos.
+
+### Infraestrutura
+
+- Docker.
+- Kubernetes.
+- Nginx.
+- Helm.
+- Terraform.
+- GitHub Actions/GitLab CI.
+- Prometheus.
+- Grafana.
+- Loki ou ELK.
+
+### Cloud
+
+- AWS: EKS, RDS, OpenSearch, ElastiCache, S3, SQS, Secrets Manager.
+- Azure: AKS, PostgreSQL Flexible Server, AI Search, Redis, Blob Storage, Key Vault.
+- GCP: GKE, Cloud SQL, Memorystore, Cloud Storage, Secret Manager.
+
+---
+
+## 17. Estrutura de Repositorio
+
+```text
+ongp/
+  apps/
+    api/
+      app/
+        main.py
+        modules/
+          auth/
+          sources/
+          ingestion/
+          persons/
+          companies/
+          contracts/
+          expenses/
+          alerts/
+          reports/
+          graphs/
+        workers/
+        core/
+        db/
+      tests/
+    web/
+      src/
+        app/
+        components/
+        features/
+        lib/
+        styles/
+      tests/
+  packages/
+    schemas/
+    connectors-sdk/
+    risk-engine/
+  infra/
+    docker/
+    k8s/
+    helm/
+    terraform/
+  docs/
+    architecture.md
+    data-sources.md
+    lgpd.md
+    api.md
+```
+
+---
+
+## 18. Plano de Escalabilidade Nacional
+
+### Estrategia por fases
+
+1. Comecar com fontes federais de alta qualidade.
+2. Integrar capitais e estados.
+3. Expandir para municipios grandes.
+4. Criar fabrica de conectores para municipios pequenos.
+5. Usar padroes de portais recorrentes para reaproveitar parsers.
+6. Priorizar fontes por volume financeiro, populacao e risco.
+
+### Escalabilidade tecnica
+
+- Workers horizontais por fila e tipo de fonte.
+- Filas separadas para API, scraping, OCR e IA.
+- Rate limit por dominio.
+- Cache de respostas frequentes.
+- Particionamento de tabelas grandes por ano e jurisdicao.
+- Replicas de leitura.
+- Indices dedicados por periodo quando necessario.
+- Object storage para documentos brutos.
+- Processamento incremental.
+
+### Qualidade de dados
+
+- Score de confianca por fonte.
+- Validacao de schema.
+- Monitoramento de mudanca de layout.
+- Testes automaticos de conectores.
+- Painel de fontes quebradas.
+- Reconciliação por totais oficiais.
+
+---
+
+## 19. Roadmap
+
+### MVP - 12 a 16 semanas
+
+Objetivo: provar valor com dados federais e alguns estados/municipios piloto.
+
+Entregas:
+
+- Autenticacao e RBAC basico.
+- Ingestao do Portal da Transparencia.
+- Ingestao de Camara e Senado.
+- Cadastro de fontes.
+- PostgreSQL e OpenSearch.
+- Dashboard executivo inicial.
+- Busca por pessoa, empresa e contrato.
+- Relatorios CSV/PDF simples.
+- Primeiras regras de alerta.
+- Logs de auditoria.
+- Deploy Docker Compose ou Kubernetes simples.
+
+### Beta - 4 a 6 meses
+
+Objetivo: ampliar cobertura, grafo e IA explicavel.
+
+Entregas:
+
+- Neo4j com visualizacao de relacionamentos.
+- Conectores para estados e capitais.
+- Pipeline OCR para diarios oficiais e PDFs.
+- Alertas por e-mail, Telegram e Discord.
+- IA para explicacao de alertas.
+- Score de risco configuravel.
+- Dashboard publico.
+- Exportacao Excel.
+- Observabilidade completa.
+- Hardening LGPD e seguranca.
+
+### Producao nacional - 9 a 18 meses
+
+Objetivo: operar em escala nacional com governanca, resiliencia e cobertura ampla.
+
+Entregas:
+
+- Kubernetes multiambiente.
+- Alta disponibilidade.
+- Multi-cloud opcional.
+- Fabrica de conectores municipais.
+- Monitoramento de milhares de fontes.
+- Logs imutaveis com storage WORM.
+- Relatorios avancados.
+- Motor de regras configuravel por orgao.
+- APIs publicas documentadas.
+- Programa de validacao de qualidade de dados.
+- Processo juridico e compliance continuo.
+
+---
+
+## 20. Riscos e Mitigacoes
+
+| Risco | Impacto | Mitigacao |
+|---|---:|---|
+| Portais sem padrao | Alto | SDK de conectores, parsers reutilizaveis e monitoramento de layout |
+| Dados incompletos | Alto | Score de qualidade, fonte original e reconciliacao |
+| Mudancas legais | Alto | Revisao juridica continua e feature flags por fonte |
+| Falsos positivos | Medio | Explicabilidade, revisao humana e calibracao |
+| Alto custo de OCR | Medio | OCR sob demanda, cache e priorizacao |
+| Escala municipal | Alto | Priorizacao por risco/volume e automacao de conectores |
+| Exposicao indevida de dados pessoais | Critico | Mascaramento, minimizacao, RBAC e auditoria |
+
+---
+
+## 21. Definicao de Pronto
+
+Uma funcionalidade so deve ser considerada pronta quando:
+
+- Possui fonte de dados rastreavel.
+- Registra logs de auditoria.
+- Tem tratamento de erro.
+- Tem testes automatizados proporcionais ao risco.
+- Respeita mascaramento e permissoes.
+- Exibe evidencias para o usuario.
+- Documenta limitacoes conhecidas.
+- Foi validada com dados reais ou amostra fiel.
+
+---
+
+## 22. Proximos Passos Recomendados
+
+1. Validar juridicamente as fontes e os niveis de exposicao publica.
+2. Definir 5 a 10 fontes prioritarias para o MVP.
+3. Criar prova de conceito de ingestao com Portal da Transparencia.
+4. Implementar modelo inicial de despesas, contratos, pessoas e empresas.
+5. Construir dashboard executivo minimo.
+6. Adicionar 5 regras de alerta de alto valor.
+7. Validar com usuarios de auditoria ou jornalismo investigativo.
