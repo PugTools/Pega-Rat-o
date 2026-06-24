@@ -1,4 +1,3 @@
-import os
 import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -9,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.cache import delete_pattern
+from app.core.config import settings
 from app.db import repositories
 from app.db.models import Contract, Expense
 from app.modules.alerts.risk_rules import (
@@ -59,7 +59,7 @@ class IngestionPipeline:
     ) -> None:
         self.db = db
         self.client = client or PortalTransparenciaClient(
-            api_key=os.getenv("PORTAL_TRANSPARENCIA_API_KEY")
+            api_key=settings.portal_transparencia_api_key
         )
         self.compras_client = compras_client or ComprasGovClient()
         self.graph_sync_service = graph_sync_service or GraphSyncService()

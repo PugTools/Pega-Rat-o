@@ -7,7 +7,7 @@ import { api, type EntityGraph } from "@/lib/api";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
-    <div className="grid h-full place-items-center p-6 text-sm text-slate-500">
+    <div className="grid h-full place-items-center p-6 text-sm text-slate-500 dark:text-slate-400">
       Carregando grafo...
     </div>
   ),
@@ -82,12 +82,12 @@ export const GraphViewer = memo(function GraphViewer({ entityType, entityId }: G
   );
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
-        <h3 className="text-base font-semibold text-slate-950">
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+        <h3 className="text-base font-semibold text-slate-950 dark:text-white">
           Rede de Conexoes
         </h3>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {entityType}:{entityId}
         </p>
       </div>
@@ -96,13 +96,13 @@ export const GraphViewer = memo(function GraphViewer({ entityType, entityId }: G
         {loading ? (
           <div className="grid h-full place-items-center p-6">
             <div className="grid w-full max-w-sm gap-3">
-              <div className="mx-auto h-16 w-16 animate-pulse rounded-full bg-slate-200" />
-              <div className="h-3 animate-pulse rounded bg-slate-200" />
-              <div className="mx-auto h-3 w-2/3 animate-pulse rounded bg-slate-200" />
+              <div className="mx-auto h-16 w-16 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+              <div className="h-3 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+              <div className="mx-auto h-3 w-2/3 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
             </div>
           </div>
         ) : forceData.nodes.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-slate-500">
+          <div className="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
             Nenhuma conexao encontrada.
           </div>
         ) : (

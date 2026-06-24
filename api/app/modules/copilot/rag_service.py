@@ -1,16 +1,16 @@
-import os
 from typing import Any
 
 from openai import OpenAI
 
+from app.core.config import settings
 from app.db.elasticsearch_db import es_client
 from app.db.neo4j_database import neo4j_connection
 
 
 class CopilotRAGService:
     def __init__(self) -> None:
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.openai_api_key = settings.OPENAI_API_KEY
+        self.model = settings.OPENAI_MODEL
         self.client = OpenAI(api_key=self.openai_api_key) if self.openai_api_key else None
 
     def answer(self, question: str) -> dict[str, Any]:

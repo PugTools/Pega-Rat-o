@@ -1,0 +1,52 @@
+{
+  "name": "ONGP PEGA RATAO",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    }
+  },
+  "forwardPorts": [3000, 3001, 7474, 7687, 8000, 9090, 9200],
+  "portsAttributes": {
+    "3000": {
+      "label": "ONGP Web",
+      "onAutoForward": "openBrowser"
+    },
+    "8000": {
+      "label": "ONGP API"
+    },
+    "7474": {
+      "label": "Neo4j Browser"
+    },
+    "9090": {
+      "label": "Prometheus"
+    },
+    "3001": {
+      "label": "Grafana"
+    }
+  },
+  "remoteEnv": {
+    "CGU_API_KEY": "${localEnv:CGU_API_KEY}",
+    "PORTAL_TRANSPARENCIA_API_KEY": "${localEnv:PORTAL_TRANSPARENCIA_API_KEY}",
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+    "GOOGLE_CLIENT_ID": "${localEnv:GOOGLE_CLIENT_ID}",
+    "GOOGLE_CLIENT_SECRET": "${localEnv:GOOGLE_CLIENT_SECRET}",
+    "GOVBR_CLIENT_ID": "${localEnv:GOVBR_CLIENT_ID}"
+  },
+  "postCreateCommand": "python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && pip install -r api/requirements.txt && cd web && npm install",
+  "postStartCommand": "docker compose up -d --build",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-azuretools.vscode-docker",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}

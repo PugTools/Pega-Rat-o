@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -18,7 +18,7 @@ class PortalTransparenciaClient(BaseIngestionClient):
         base_url: str = "https://api.portaldatransparencia.gov.br/api-de-dados",
         timeout: float = 30.0,
     ) -> None:
-        headers = {"chave-api-dados": settings.PORTAL_TRANSPARENCIA_API_KEY}
+        headers = {"chave-api-dados": api_key or settings.portal_transparencia_api_key}
         if api_key is not None:
             headers["chave-api-dados"] = api_key
         super().__init__(base_url=base_url, timeout=timeout, headers=headers)
@@ -30,20 +30,23 @@ class PortalTransparenciaClient(BaseIngestionClient):
         pagina: int = 1,
         codigo_orgao: str | None = None,
     ) -> list[ExpenseCreate]:
-        params: dict[str, Any] = {
-            "dataInicio": data_inicio.strftime("%d/%m/%Y"),
-            "dataFim": data_fim.strftime("%d/%m/%Y"),
-            "pagina": pagina,
-        }
-        if codigo_orgao:
-            params["codigoOrgao"] = codigo_orgao
+        items: list[dict[str, Any]] = []
+        for emission_date in self._date_range(data_inicio, data_fim):
+            for phase in (1, 2, 3):
+                params: dict[str, Any] = {
+                    "dataEmissao": emission_date.strftime("%d/%m/%Y"),
+                    "fase": phase,
+                    "pagina": pagina,
+                }
+                if codigo_orgao:
+                    params["unidadeGestora"] = codigo_orgao
 
-        payload = self.get("/despesas/documentos", params=params)
-        items = self._items(payload)
+                payload = self.get("/despesas/documentos", params=params)
+                items.extend(self._items(payload))
+
         logger.debug(
             "portal_transparencia_expenses_payload",
             extra={
-                "payload_type": type(payload).__name__,
                 "items": len(items),
                 "first_keys": sorted(items[0].keys()) if items else [],
             },
@@ -59,9 +62,9 @@ class PortalTransparenciaClient(BaseIngestionClient):
     ) -> list[ContractCreate]:
         params: dict[str, Any] = {"pagina": pagina}
         if data_inicio:
-            params["dataInicio"] = data_inicio.strftime("%d/%m/%Y")
+            params["dataInicial"] = data_inicio.strftime("%d/%m/%Y")
         if data_fim:
-            params["dataFim"] = data_fim.strftime("%d/%m/%Y")
+            params["dataFinal"] = data_fim.strftime("%d/%m/%Y")
         if codigo_orgao:
             params["codigoOrgao"] = codigo_orgao
 
@@ -76,6 +79,22 @@ class PortalTransparenciaClient(BaseIngestionClient):
             },
         )
         return [self.transform_contract(item) for item in items]
+
+    def fetch_remuneracoes(
+        self,
+        mes_ano: int,
+        cpf: str | None = None,
+        servidor_id: int | None = None,
+        pagina: int = 1,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"mesAno": mes_ano, "pagina": pagina}
+        if cpf:
+            params["cpf"] = cpf
+        if servidor_id:
+            params["id"] = servidor_id
+
+        payload = self.get("/servidores/remuneracao", params=params)
+        return self._items(payload)
 
     def transform_expense(self, item: dict[str, Any]) -> ExpenseCreate:
         amount = self._decimal(
@@ -197,6 +216,12 @@ class PortalTransparenciaClient(BaseIngestionClient):
                     return [item for item in value if isinstance(item, dict)]
             return [payload]
         return []
+
+    def _date_range(self, start_date: date, end_date: date) -> list[date]:
+        if end_date < start_date:
+            return []
+        days = min((end_date - start_date).days, 31)
+        return [start_date + timedelta(days=offset) for offset in range(days + 1)]
 
     def _date(self, value: Any) -> date | None:
         if isinstance(value, date):

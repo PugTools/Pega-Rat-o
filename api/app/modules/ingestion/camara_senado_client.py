@@ -192,6 +192,32 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
         return [self.transform_senador(item) for item in self._senadores(payload)]
 
     def fetch_senador_despesas(self, senador_id: str, ano: int) -> list[ExpenseCreate]:
+        legislativo_expenses = self._fetch_senador_despesas_legislativo(
+            senador_id=senador_id,
+            ano=ano,
+        )
+        if legislativo_expenses:
+            return legislativo_expenses
+
+        return self._fetch_senador_despesas_ceaps(senador_id=senador_id, ano=ano)
+
+    def _fetch_senador_despesas_legislativo(
+        self,
+        senador_id: str,
+        ano: int,
+    ) -> list[ExpenseCreate]:
+        try:
+            payload = self.get(f"/senador/{senador_id}/gastos", params={"ano": ano})
+        except IngestionClientError:
+            return []
+
+        return [self.transform_expense(item) for item in self._items(payload)]
+
+    def _fetch_senador_despesas_ceaps(
+        self,
+        senador_id: str,
+        ano: int,
+    ) -> list[ExpenseCreate]:
         try:
             payload = self.get(
                 f"https://adm.senado.gov.br/adm-dadosabertos/api/v1/senadores/despesas_ceaps/{ano}"
