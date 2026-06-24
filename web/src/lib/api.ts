@@ -368,17 +368,19 @@ export const api = {
     tseYears?: string;
     tseLimitPerRole?: number;
     tseStateCode?: string;
+    tseAssets?: boolean;
   } = {}) => {
     const searchParams = new URLSearchParams({
       itens: String(params.limit ?? 100),
       pagina: String(params.page ?? 1),
       paginas_camara: String(params.camaraPages ?? 6),
-      despesas_por_politico: String(params.expensesPerPolitician ?? 20),
+      despesas_por_politico: String(params.expensesPerPolitician ?? 5),
       incluir_senado: String(params.includeSenate ?? true),
-      despesas_senado: String(params.senateExpenses ?? true),
+      despesas_senado: String(params.senateExpenses ?? false),
       incluir_tse: String(params.includeTse ?? true),
       anos_tse: params.tseYears ?? "2024,2022",
-      limite_tse_por_cargo: String(params.tseLimitPerRole ?? 0),
+      limite_tse_por_cargo: String(params.tseLimitPerRole ?? 50),
+      patrimonio_tse: String(params.tseAssets ?? false),
     });
     if (params.year) {
       searchParams.set("ano", String(params.year));

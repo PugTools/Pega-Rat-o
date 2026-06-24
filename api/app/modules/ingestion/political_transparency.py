@@ -82,6 +82,7 @@ class PoliticalTransparencyIngestion:
         anos_tse: list[int] | None = None,
         limite_tse_por_cargo: int = 50,
         uf_tse: str | None = None,
+        patrimonio_tse: bool = True,
         sync_graph: bool = True,
     ) -> PoliticalIngestionResult:
         expense_year = ano or date.today().year
@@ -97,6 +98,7 @@ class PoliticalTransparencyIngestion:
             anos_tse=anos_tse,
             limite_tse_por_cargo=limite_tse_por_cargo,
             uf_tse=uf_tse,
+            patrimonio_tse=patrimonio_tse,
             errors=errors,
             source_counts=source_counts,
         )
@@ -114,6 +116,7 @@ class PoliticalTransparencyIngestion:
 
         saved_people: list[Person] = []
         saved_expenses: list[Expense] = []
+        people_to_enrich: list[tuple[Person, PersonCreate]] = []
         expenses_found = 0
 
         for politician_payload in politicians:
@@ -122,12 +125,18 @@ class PoliticalTransparencyIngestion:
                 person = repositories.upsert_person(self.db, person_payload)
                 self._upsert_public_role(person, politician_payload, errors)
                 saved_people.append(person)
+                people_to_enrich.append((person, person_payload))
             except Exception as exc:
                 errors.append(
                     f"politician_persist_failed:{person_payload.external_id}: {exc}"
                 )
                 continue
 
+        if saved_people:
+            self.db.commit()
+            delete_pattern("persons:*")
+
+        for person, person_payload in people_to_enrich:
             politician_expenses = self._fetch_expenses_for_person(
                 politician_payload=person_payload,
                 expense_year=expense_year,
@@ -175,6 +184,7 @@ class PoliticalTransparencyIngestion:
         anos_tse: list[int] | None,
         limite_tse_por_cargo: int,
         uf_tse: str | None,
+        patrimonio_tse: bool,
         errors: list[str],
         source_counts: dict[str, int],
     ) -> list[PoliticalRecord]:
@@ -221,6 +231,7 @@ class PoliticalTransparencyIngestion:
                     anos_tse=anos_tse or [2024, 2022],
                     limite_tse_por_cargo=limite_tse_por_cargo,
                     uf_tse=uf_tse,
+                    patrimonio_tse=patrimonio_tse,
                     errors=errors,
                     source_counts=source_counts,
                 )
@@ -233,6 +244,7 @@ class PoliticalTransparencyIngestion:
         anos_tse: list[int],
         limite_tse_por_cargo: int,
         uf_tse: str | None,
+        patrimonio_tse: bool,
         errors: list[str],
         source_counts: dict[str, int],
     ) -> list[PoliticalRecord]:
@@ -244,6 +256,7 @@ class PoliticalTransparencyIngestion:
                     year=year,
                     state_code=uf_tse,
                     limit_per_role=limite_tse_por_cargo,
+                    include_assets=patrimonio_tse,
                 )
                 source_counts[f"dados-abertos-tse-{year}"] = len(records)
                 politicians.extend(

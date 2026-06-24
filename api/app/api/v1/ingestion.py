@@ -135,6 +135,7 @@ def trigger_political_ingestion(
     anos_tse: str = Query(default="2024,2022"),
     limite_tse_por_cargo: int = Query(default=50, ge=0),
     uf_tse: str | None = Query(default=None, min_length=2, max_length=2),
+    patrimonio_tse: bool = Query(default=True),
     sync: bool = Query(default=False),
 ) -> dict[str, Any]:
     parsed_tse_years = _parse_tse_years(anos_tse)
@@ -153,6 +154,7 @@ def trigger_political_ingestion(
             anos_tse=parsed_tse_years,
             limite_tse_por_cargo=limite_tse_por_cargo,
             uf_tse=uf_tse,
+            patrimonio_tse=patrimonio_tse,
         )
 
     task = task_run_political_ingestion.delay(
@@ -167,6 +169,7 @@ def trigger_political_ingestion(
         anos_tse=parsed_tse_years,
         limite_tse_por_cargo=limite_tse_por_cargo,
         uf_tse=uf_tse,
+        patrimonio_tse=patrimonio_tse,
     )
     _record_admin_task_submission(
         task_id=task.id,
@@ -191,6 +194,7 @@ def trigger_political_ingestion(
             "anos_tse": parsed_tse_years,
             "limite_tse_por_cargo": limite_tse_por_cargo,
             "uf_tse": uf_tse,
+            "patrimonio_tse": patrimonio_tse,
             "sync": sync,
         },
     }
@@ -210,6 +214,7 @@ def _run_political_ingestion_now(
     anos_tse: list[int],
     limite_tse_por_cargo: int,
     uf_tse: str | None,
+    patrimonio_tse: bool,
 ) -> dict[str, Any]:
     task_id = f"sync-political-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
     _record_admin_task_submission(
@@ -233,6 +238,7 @@ def _run_political_ingestion_now(
             anos_tse=anos_tse,
             limite_tse_por_cargo=limite_tse_por_cargo,
             uf_tse=uf_tse,
+            patrimonio_tse=patrimonio_tse,
             sync_graph=False,
         )
     except Exception as exc:

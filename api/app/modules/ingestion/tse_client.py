@@ -55,6 +55,7 @@ class TseDadosAbertosClient:
         limit_per_role: int = 50,
         role_names: set[str] | None = None,
         only_elected: bool = True,
+        include_assets: bool = True,
     ) -> list[TsePoliticalRecord]:
         limit = None if limit_per_role <= 0 else max(1, limit_per_role)
         roles = role_names or default_roles_for_year(year)
@@ -63,7 +64,11 @@ class TseDadosAbertosClient:
         state_filter = _upper_text(state_code)
 
         archive = self._download_candidates_zip(year)
-        asset_totals = self._safe_fetch_asset_totals(year=year, state_code=state_filter)
+        asset_totals = (
+            self._safe_fetch_asset_totals(year=year, state_code=state_filter)
+            if include_assets
+            else {}
+        )
         with zipfile.ZipFile(io.BytesIO(archive)) as zip_file:
             for file_name in self._candidate_csv_names(zip_file, state_filter):
                 with zip_file.open(file_name) as raw_file:

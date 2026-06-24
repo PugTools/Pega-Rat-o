@@ -27,7 +27,7 @@ type Toast = {
   message: string;
 };
 
-type ActionKey = "politicians" | "daily";
+type ActionKey = "politicians" | "politiciansFull" | "daily";
 
 type AdminActionResponse = {
   status: string;
@@ -93,8 +93,10 @@ export default function AdminPage() {
     try {
       const path =
         action === "politicians"
-          ? "/ingestion/politicians/run?sync=true&itens=100&paginas_camara=6&despesas_por_politico=20&incluir_senado=true&despesas_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=0"
-          : "/ingestion/run?sync=true";
+          ? "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=5&incluir_senado=true&despesas_senado=false&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50&patrimonio_tse=false"
+          : action === "politiciansFull"
+            ? "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=20&incluir_senado=true&despesas_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=0&patrimonio_tse=true"
+            : "/ingestion/run";
       const payload = await adminRequest<AdminActionResponse>(path, {
         method: "POST",
       });
@@ -154,12 +156,18 @@ export default function AdminPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-3">
         <ActionCard
           busy={runningAction === "politicians"}
-          description="Busca e salva deputados, senadores e eleitos do TSE por cargo, partido e UF para preencher os paineis de politicos."
+          description="Envia a coleta oficial para a fila. Os politicos aparecem primeiro; despesas e enriquecimentos continuam em segundo plano."
           onRun={() => runAction("politicians")}
           title="Atualizar politicos ativos"
+        />
+        <ActionCard
+          busy={runningAction === "politiciansFull"}
+          description="Carga pesada em segundo plano com TSE nacional, despesas parlamentares e patrimonio declarado quando disponivel."
+          onRun={() => runAction("politiciansFull")}
+          title="Carga nacional completa"
         />
         <ActionCard
           busy={runningAction === "daily"}
@@ -415,7 +423,14 @@ function errorMessage(error: unknown) {
 }
 
 function successMessage(action: ActionKey, payload: AdminActionResponse) {
-  if (action === "politicians" && payload.politicians_saved !== undefined) {
+  if (payload.status === "accepted") {
+    return `Tarefa enviada para a fila. ID: ${payload.task_id ?? "sem id"}. O monitor atualiza automaticamente.`;
+  }
+
+  if (
+    (action === "politicians" || action === "politiciansFull") &&
+    payload.politicians_saved !== undefined
+  ) {
     const found = payload.politicians_found ?? payload.politicians_saved;
     const warnings = payload.errors?.length ?? 0;
     const warningText = warnings ? ` com ${warnings} aviso(s)` : "";

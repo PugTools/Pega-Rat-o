@@ -24,7 +24,7 @@ def task_run_daily_ingestion(
             codigo_orgao=codigo_orgao,
             pagina=pagina,
         )
-        return result.to_dict()
+        return {"job": "daily_ingestion", **result.to_dict()}
     finally:
         db.close()
 
@@ -57,8 +57,9 @@ def task_run_political_ingestion(
     despesas_senado: bool = False,
     incluir_tse: bool = False,
     anos_tse: list[int] | None = None,
-    limite_tse_por_cargo: int = 0,
+    limite_tse_por_cargo: int = 50,
     uf_tse: str | None = None,
+    patrimonio_tse: bool = True,
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
@@ -75,7 +76,8 @@ def task_run_political_ingestion(
             anos_tse=anos_tse,
             limite_tse_por_cargo=limite_tse_por_cargo,
             uf_tse=uf_tse,
+            patrimonio_tse=patrimonio_tse,
         )
-        return result.to_dict()
+        return {"job": "political_ingestion", **result.to_dict()}
     finally:
         db.close()
