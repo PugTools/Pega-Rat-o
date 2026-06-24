@@ -1,8 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { memo, useEffect, useMemo, useState } from "react";
-import ForceGraph2D from "react-force-graph-2d";
 import { api, type EntityGraph } from "@/lib/api";
+
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+  ssr: false,
+  loading: () => (
+    <div className="grid h-full place-items-center p-6 text-sm text-slate-500">
+      Carregando grafo...
+    </div>
+  ),
+});
 
 type GraphViewerProps = {
   entityType: string;

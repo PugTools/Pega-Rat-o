@@ -1,13 +1,26 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { AlertsTable } from "@/components/AlertsTable";
-import { GraphViewer } from "@/components/GraphViewer";
 
 type SelectedEntity = {
   entityType: string;
   entityId: string;
 };
+
+const GraphViewer = dynamic(
+  () => import("@/components/GraphViewer").then((module) => module.GraphViewer),
+  {
+    ssr: false,
+    loading: () => (
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
+        <div className="mt-4 h-64 animate-pulse rounded bg-slate-100" />
+      </section>
+    ),
+  },
+);
 
 export function DashboardIntelligence() {
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(null);

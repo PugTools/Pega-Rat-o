@@ -372,13 +372,13 @@ export const api = {
     const searchParams = new URLSearchParams({
       itens: String(params.limit ?? 100),
       pagina: String(params.page ?? 1),
-      paginas_camara: String(params.camaraPages ?? 1),
-      despesas_por_politico: String(params.expensesPerPolitician ?? 100),
+      paginas_camara: String(params.camaraPages ?? 6),
+      despesas_por_politico: String(params.expensesPerPolitician ?? 20),
       incluir_senado: String(params.includeSenate ?? true),
-      despesas_senado: String(params.senateExpenses ?? false),
+      despesas_senado: String(params.senateExpenses ?? true),
       incluir_tse: String(params.includeTse ?? true),
       anos_tse: params.tseYears ?? "2024,2022",
-      limite_tse_por_cargo: String(params.tseLimitPerRole ?? 50),
+      limite_tse_por_cargo: String(params.tseLimitPerRole ?? 0),
     });
     if (params.year) {
       searchParams.set("ano", String(params.year));

@@ -57,7 +57,7 @@ def task_run_political_ingestion(
     despesas_senado: bool = False,
     incluir_tse: bool = False,
     anos_tse: list[int] | None = None,
-    limite_tse_por_cargo: int = 50,
+    limite_tse_por_cargo: int = 0,
     uf_tse: str | None = None,
 ) -> dict[str, Any]:
     db = SessionLocal()

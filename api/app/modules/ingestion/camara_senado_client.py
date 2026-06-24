@@ -5,6 +5,11 @@ from math import ceil
 from typing import Any
 
 from app.modules.ingestion.base_client import BaseIngestionClient, IngestionClientError
+from app.modules.ingestion.salary_reference import (
+    SALARY_REFERENCE_SOURCE,
+    SALARY_REFERENCE_YEAR,
+    annual_salary_for_role,
+)
 from app.schemas.core_schemas import ExpenseCreate, PersonCreate
 
 
@@ -104,6 +109,8 @@ class CamaraDadosAbertosClient(BaseIngestionClient):
 
     def transform_deputado(self, item: dict[str, Any]) -> PersonCreate:
         full_name = self._text(item.get("nome")) or "Parlamentar sem nome"
+        role_name = "Deputado Federal"
+        salary_reference_value = annual_salary_for_role(role_name)
         return PersonCreate(
             full_name=full_name,
             normalized_name=_normalize_name(full_name),
@@ -113,6 +120,9 @@ class CamaraDadosAbertosClient(BaseIngestionClient):
             state_code=self._upper_text(item.get("siglaUf")),
             photo_url=self._text(item.get("urlFoto")),
             email=self._text(item.get("email")),
+            salary_reference_value=salary_reference_value,
+            salary_reference_year=SALARY_REFERENCE_YEAR if salary_reference_value is not None else None,
+            salary_reference_source=SALARY_REFERENCE_SOURCE if salary_reference_value is not None else None,
         )
 
     def transform_expense(self, item: dict[str, Any]) -> ExpenseCreate:
@@ -183,7 +193,9 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
 
     def fetch_senador_despesas(self, senador_id: str, ano: int) -> list[ExpenseCreate]:
         try:
-            payload = self.get(f"/senador/{senador_id}/gastos", params={"ano": ano})
+            payload = self.get(
+                f"https://adm.senado.gov.br/adm-dadosabertos/api/v1/senadores/despesas_ceaps/{ano}"
+            )
         except IngestionClientError:
             logger.info(
                 "senado_expenses_endpoint_unavailable",
@@ -191,7 +203,11 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
             )
             return []
 
-        return [self.transform_expense(item) for item in self._items(payload)]
+        return [
+            self.transform_expense(item)
+            for item in self._items(payload)
+            if self._text(item.get("codSenador")) == str(senador_id)
+        ]
 
     def transform_senador(self, item: dict[str, Any]) -> PersonCreate:
         identity = item.get("IdentificacaoParlamentar") or item.get("identificacaoParlamentar") or item
@@ -203,6 +219,8 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
             or self._text(identity.get("NomeParlamentar"))
             or "Senador sem nome"
         )
+        role_name = "Senador"
+        salary_reference_value = annual_salary_for_role(role_name)
 
         return PersonCreate(
             full_name=full_name,
@@ -216,19 +234,35 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
             state_code=self._upper_text(identity.get("UfParlamentar")),
             photo_url=self._text(identity.get("UrlFotoParlamentar")),
             email=self._text(identity.get("EmailParlamentar")),
+            salary_reference_value=salary_reference_value,
+            salary_reference_year=SALARY_REFERENCE_YEAR if salary_reference_value is not None else None,
+            salary_reference_source=SALARY_REFERENCE_SOURCE if salary_reference_value is not None else None,
         )
 
     def transform_expense(self, item: dict[str, Any]) -> ExpenseCreate:
-        expense_date = date.today()
+        expense_date = self._date(item.get("data")) or date.today()
         return ExpenseCreate(
-            expense_type=self._text(item.get("TipoDespesa") or item.get("tipo") or "senado"),
-            description=self._text(item.get("Fornecedor") or item.get("fornecedor")),
-            amount=self._decimal(item.get("Valor") or item.get("valor")),
+            expense_type=self._text(item.get("tipoDespesa") or item.get("TipoDespesa") or "CEAPS"),
+            description=self._text(
+                item.get("fornecedor")
+                or item.get("Fornecedor")
+                or item.get("detalhamento")
+                or item.get("tipoDocumento")
+            ),
+            amount=self._decimal(
+                item.get("valorReembolsado")
+                or item.get("Valor")
+                or item.get("valor")
+            ),
             expense_date=expense_date,
             fiscal_year=expense_date.year,
+            commitment_number=self._text(item.get("id")),
+            payment_number=self._text(item.get("documento")),
         )
 
     def _items(self, payload: Any) -> list[dict[str, Any]]:
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
         if isinstance(payload, dict):
             stack = [payload]
             while stack:
@@ -263,10 +297,23 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
             return value
         if isinstance(value, int | float):
             return Decimal(str(value))
+        text = str(value).strip()
+        if "," in text:
+            text = text.replace(".", "").replace(",", ".")
+        elif text.count(".") > 1:
+            text = text.replace(".", "")
         try:
-            return Decimal(str(value).replace(",", "."))
+            return Decimal(text)
         except (InvalidOperation, ValueError):
             return Decimal("0")
+
+    def _date(self, value: Any) -> date | None:
+        if not value:
+            return None
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return None
 
     def _text(self, value: Any) -> str | None:
         if value is None:

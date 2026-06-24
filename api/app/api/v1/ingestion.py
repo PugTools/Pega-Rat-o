@@ -133,7 +133,7 @@ def trigger_political_ingestion(
     despesas_senado: bool = Query(default=False),
     incluir_tse: bool = Query(default=False),
     anos_tse: str = Query(default="2024,2022"),
-    limite_tse_por_cargo: int = Query(default=50, ge=1, le=500),
+    limite_tse_por_cargo: int = Query(default=50, ge=0),
     uf_tse: str | None = Query(default=None, min_length=2, max_length=2),
     sync: bool = Query(default=False),
 ) -> dict[str, Any]:

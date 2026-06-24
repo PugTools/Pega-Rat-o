@@ -56,7 +56,7 @@ class TseDadosAbertosClient:
         role_names: set[str] | None = None,
         only_elected: bool = True,
     ) -> list[TsePoliticalRecord]:
-        limit = max(1, min(limit_per_role, 500))
+        limit = None if limit_per_role <= 0 else max(1, limit_per_role)
         roles = role_names or default_roles_for_year(year)
         quotas = {role: 0 for role in roles}
         records: list[TsePoliticalRecord] = []
@@ -83,12 +83,14 @@ class TseDadosAbertosClient:
                             continue
                         if only_elected and not _is_elected(row.get("DS_SIT_TOT_TURNO")):
                             continue
-                        if quotas[record.role_name] >= limit:
+                        if limit is not None and quotas[record.role_name] >= limit:
                             continue
 
                         records.append(record)
                         quotas[record.role_name] += 1
-                        if quotas and all(count >= limit for count in quotas.values()):
+                        if limit is not None and quotas and all(
+                            count >= limit for count in quotas.values()
+                        ):
                             return records
 
         return records

@@ -93,7 +93,7 @@ export default function AdminPage() {
     try {
       const path =
         action === "politicians"
-          ? "/ingestion/politicians/run?sync=true&itens=100&paginas_camara=6&despesas_por_politico=0&incluir_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50"
+          ? "/ingestion/politicians/run?sync=true&itens=100&paginas_camara=6&despesas_por_politico=20&incluir_senado=true&despesas_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=0"
           : "/ingestion/run?sync=true";
       const payload = await adminRequest<AdminActionResponse>(path, {
         method: "POST",
