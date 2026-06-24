@@ -192,6 +192,68 @@ def check_abnormal_growth(
     ).to_dict()
 
 
+def check_asset_salary_ratio(
+    persons: Iterable[Any],
+    medium_threshold: Decimal = Decimal("8.00"),
+    high_threshold: Decimal = Decimal("15.00"),
+    critical_threshold: Decimal = Decimal("30.00"),
+) -> list[dict[str, Any]]:
+    alerts: list[dict[str, Any]] = []
+
+    for person in persons:
+        person_id = _entity_id(person, "id")
+        full_name = _field(person, "full_name") or "Agente publico"
+        declared_assets = _decimal_value(person, "declared_assets_value")
+        annual_salary = _decimal_value(person, "salary_reference_value")
+        ratio = _decimal_value(person, "asset_salary_ratio")
+
+        if not person_id or declared_assets <= 0 or annual_salary <= 0:
+            continue
+        if ratio < medium_threshold:
+            continue
+
+        if ratio >= critical_threshold:
+            severity = "critical"
+            score = Decimal("92.000")
+        elif ratio >= high_threshold:
+            severity = "high"
+            score = Decimal("82.000")
+        else:
+            severity = "medium"
+            score = Decimal("68.000")
+
+        alerts.append(
+            RiskAlert(
+                entity_type="person",
+                entity_id=person_id,
+                alert_type="asset_salary_ratio",
+                severity=severity,
+                score=score,
+                title="Patrimonio declarado acima da referencia salarial",
+                explanation=(
+                    f"{full_name} declarou patrimonio equivalente a {ratio:.1f} "
+                    "anos da remuneracao anual de referencia do cargo. "
+                    "O indicador nao prova irregularidade, mas prioriza auditoria."
+                ),
+                evidence={
+                    "person_id": person_id,
+                    "full_name": str(full_name),
+                    "declared_assets_value": str(declared_assets),
+                    "annual_salary_reference": str(annual_salary),
+                    "asset_salary_ratio": str(ratio),
+                    "medium_threshold": str(medium_threshold),
+                    "high_threshold": str(high_threshold),
+                    "critical_threshold": str(critical_threshold),
+                    "declared_assets_year": _field(person, "declared_assets_year"),
+                    "salary_reference_year": _field(person, "salary_reference_year"),
+                    "salary_reference_source": _field(person, "salary_reference_source"),
+                },
+            ).to_dict()
+        )
+
+    return alerts
+
+
 def check_incestuous_relationships(
     connection: Neo4jConnection | None = None,
 ) -> list[dict[str, Any]]:

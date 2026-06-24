@@ -5,7 +5,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.modules.ingestion.base_client import BaseIngestionClient
-from app.schemas.core_schemas import ContractCreate, ExpenseCreate
+from app.schemas.core_schemas import CompanyCreate, ContractCreate, ExpenseCreate, OrganizationCreate
 
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,31 @@ class PortalTransparenciaClient(BaseIngestionClient):
         )
 
     def transform_contract(self, item: dict[str, Any]) -> ContractCreate:
+        supplier_name = self._text(
+            self._nested_value(item, "fornecedor", "nome")
+            or self._nested_value(item, "fornecedor", "nomeRazaoSocial")
+            or item.get("nomeFornecedor")
+            or item.get("fornecedor")
+        )
+        supplier_cnpj = self._digits(
+            self._nested_value(item, "fornecedor", "cnpj")
+            or self._nested_value(item, "fornecedor", "cpfCnpj")
+            or item.get("cnpjFornecedor")
+            or item.get("cpfCnpjFornecedor")
+        )
+        organization_name = self._text(
+            self._nested_value(item, "orgao", "nome")
+            or self._nested_value(item, "unidadeGestora", "nome")
+            or item.get("nomeOrgao")
+            or item.get("orgao")
+        )
+        organization_code = self._text(
+            self._nested_value(item, "orgao", "codigo")
+            or self._nested_value(item, "unidadeGestora", "codigo")
+            or item.get("codigoOrgao")
+            or item.get("codigoUnidadeGestora")
+        )
+
         return ContractCreate(
             contract_number=self._text(item.get("numero") or item.get("numeroContrato")),
             process_number=self._text(item.get("processo") or item.get("numeroProcesso")),
@@ -144,6 +169,22 @@ class PortalTransparenciaClient(BaseIngestionClient):
                 or item.get("valorGlobal")
                 or item.get("valor")
             ),
+            supplier_payload=CompanyCreate(
+                legal_name=supplier_name or "Fornecedor sem nome",
+                cnpj=supplier_cnpj,
+                registration_status="ativo",
+            )
+            if supplier_cnpj
+            else None,
+            organization_payload=OrganizationCreate(
+                name=organization_name or "Orgao nao informado",
+                normalized_name=self._normalize_name(organization_name or "Orgao nao informado"),
+                organization_type="orgao_publico",
+                jurisdiction_level="federal",
+                municipality_code=organization_code,
+            )
+            if organization_name or organization_code
+            else None,
         )
 
     def _items(self, payload: Any) -> list[dict[str, Any]]:
@@ -199,6 +240,16 @@ class PortalTransparenciaClient(BaseIngestionClient):
             return None
         text_value = str(value).strip()
         return text_value or None
+
+    def _digits(self, value: Any) -> str | None:
+        text_value = self._text(value)
+        if not text_value:
+            return None
+        digits = "".join(char for char in text_value if char.isdigit())
+        return digits or None
+
+    def _normalize_name(self, value: str) -> str:
+        return " ".join(value.lower().split())
 
     def _expense_description(self, item: dict[str, Any]) -> Any:
         if item.get("descricao") or item.get("observacao") or item.get("historico"):

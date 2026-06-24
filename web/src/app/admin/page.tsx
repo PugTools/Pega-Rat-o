@@ -37,6 +37,8 @@ type AdminActionResponse = {
   politicians_saved?: number;
   expenses_found?: number;
   expenses_saved?: number;
+  contracts_found?: number;
+  contracts_saved?: number;
   source_counts?: Record<string, number>;
   errors?: string[];
 };
@@ -92,11 +94,11 @@ export default function AdminPage() {
       const path =
         action === "politicians"
           ? "/ingestion/politicians/run?sync=true&itens=100&paginas_camara=6&despesas_por_politico=0&incluir_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50"
-          : "/ingestion/run";
+          : "/ingestion/run?sync=true";
       const payload = await adminRequest<AdminActionResponse>(path, {
         method: "POST",
       });
-      setLastResult(action === "politicians" ? payload : null);
+      setLastResult(payload);
       setToast({
         type: "success",
         message: successMessage(action, payload),
@@ -253,7 +255,7 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
   const tse2022Count = result.source_counts?.["dados-abertos-tse-2022"] ?? 0;
 
   return (
-    <section className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+      <section className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-800">
@@ -261,16 +263,24 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
           </p>
           <h3 className="mt-1 text-lg font-semibold text-slate-950">
             {result.status === "completed"
-              ? "Politicos ativos sincronizados"
+              ? result.contracts_saved !== undefined
+                ? "Contratos e despesas sincronizados"
+                : "Politicos ativos sincronizados"
               : "Tarefa enviada ao processamento"}
           </h3>
           <p className="mt-1 text-sm text-emerald-900">
-            {successMessage("politicians", result)}
+            {successMessage(result.contracts_saved !== undefined ? "daily" : "politicians", result)}
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <ResultMetric label="Encontrados" value={result.politicians_found ?? 0} />
-          <ResultMetric label="Salvos" value={result.politicians_saved ?? 0} />
+          <ResultMetric
+            label={result.contracts_found !== undefined ? "Contratos achados" : "Encontrados"}
+            value={result.contracts_found ?? result.politicians_found ?? 0}
+          />
+          <ResultMetric
+            label={result.contracts_saved !== undefined ? "Contratos salvos" : "Salvos"}
+            value={result.contracts_saved ?? result.politicians_saved ?? 0}
+          />
           <ResultMetric label="Avisos" value={result.errors?.length ?? 0} />
         </div>
       </div>
@@ -410,6 +420,11 @@ function successMessage(action: ActionKey, payload: AdminActionResponse) {
     const warnings = payload.errors?.length ?? 0;
     const warningText = warnings ? ` com ${warnings} aviso(s)` : "";
     return `${payload.politicians_saved} de ${found} politicos ativos salvos${warningText}.`;
+  }
+
+  if (action === "daily" && payload.contracts_saved !== undefined) {
+    const warningText = payload.errors?.length ? ` com ${payload.errors.length} aviso(s)` : "";
+    return `${payload.contracts_saved} contrato(s) e ${payload.expenses_saved ?? 0} despesa(s) salvos${warningText}.`;
   }
 
   return `Tarefa enviada com sucesso: ${payload.task_id ?? "sem id"}`;

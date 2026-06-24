@@ -47,6 +47,12 @@ export type Person = {
   email?: string | null;
   latest_expense_total?: string | number | null;
   latest_expense_year?: number | null;
+  declared_assets_value?: string | number | null;
+  declared_assets_year?: number | null;
+  salary_reference_value?: string | number | null;
+  salary_reference_year?: number | null;
+  salary_reference_source?: string | null;
+  asset_salary_ratio?: string | number | null;
   created_at: string;
   roles?: PublicRole[];
 };
@@ -240,6 +246,12 @@ function normalizePerson(item: Person): Person {
     email: item.email ?? null,
     latest_expense_total: item.latest_expense_total ?? null,
     latest_expense_year: item.latest_expense_year ?? null,
+    declared_assets_value: item.declared_assets_value ?? null,
+    declared_assets_year: item.declared_assets_year ?? null,
+    salary_reference_value: item.salary_reference_value ?? null,
+    salary_reference_year: item.salary_reference_year ?? null,
+    salary_reference_source: item.salary_reference_source ?? null,
+    asset_salary_ratio: item.asset_salary_ratio ?? null,
     roles: item.roles ?? [],
   };
 }

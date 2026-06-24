@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.cache import delete_pattern
 from app.db import repositories
 from app.db.models import Contract, Expense
 from app.modules.alerts.risk_rules import (
@@ -18,6 +19,7 @@ from app.modules.alerts.risk_rules import (
 from app.modules.alerts.webhooks import dispatch_alert_webhook
 from app.modules.graphs.sync_service import GraphSyncService
 from app.modules.ia.nlp_processor import NLPProcessor
+from app.modules.ingestion.compras_gov_client import ComprasGovClient
 from app.modules.ingestion.transparencia_gov import PortalTransparenciaClient
 from app.modules.search.search_sync import SearchSyncService
 from app.modules.settings.risk_settings import get_risk_settings
@@ -50,6 +52,7 @@ class IngestionPipeline:
         self,
         db: Session,
         client: PortalTransparenciaClient | None = None,
+        compras_client: ComprasGovClient | None = None,
         graph_sync_service: GraphSyncService | None = None,
         search_sync_service: SearchSyncService | None = None,
         nlp_processor: NLPProcessor | None = None,
@@ -58,6 +61,7 @@ class IngestionPipeline:
         self.client = client or PortalTransparenciaClient(
             api_key=os.getenv("PORTAL_TRANSPARENCIA_API_KEY")
         )
+        self.compras_client = compras_client or ComprasGovClient()
         self.graph_sync_service = graph_sync_service or GraphSyncService()
         self.search_sync_service = search_sync_service or SearchSyncService()
         self.nlp_processor = nlp_processor or NLPProcessor(self.graph_sync_service)
@@ -70,23 +74,36 @@ class IngestionPipeline:
         pagina: int = 1,
     ) -> IngestionResult:
         end_date = data_fim or date.today()
-        start_date = data_inicio or end_date - timedelta(days=1)
+        expenses_start_date = data_inicio or end_date - timedelta(days=1)
+        contracts_start_date = data_inicio or end_date - timedelta(days=365)
 
         errors: list[str] = []
-        contracts = self._fetch_contracts(start_date, end_date, pagina, codigo_orgao, errors)
-        expenses = self._fetch_expenses(start_date, end_date, pagina, codigo_orgao, errors)
+        contracts = self._fetch_contracts(
+            contracts_start_date,
+            end_date,
+            pagina,
+            codigo_orgao,
+            errors,
+        )
+        expenses = self._fetch_expenses(
+            expenses_start_date,
+            end_date,
+            pagina,
+            codigo_orgao,
+            errors,
+        )
 
         saved_contracts = self._persist_contracts(contracts, errors)
         saved_expenses = self._persist_expenses(expenses, errors)
 
-        if errors:
-            self.db.rollback()
-        else:
+        if saved_contracts or saved_expenses:
             self._sync_graph(saved_contracts)
             self._sync_search(saved_contracts)
             self._process_nlp(saved_contracts, saved_expenses)
             self._generate_and_save_alerts(saved_contracts, saved_expenses)
             self.db.commit()
+        else:
+            self.db.rollback()
 
         return IngestionResult(
             contracts_found=len(contracts),
@@ -104,6 +121,7 @@ class IngestionPipeline:
         codigo_orgao: str | None,
         errors: list[str],
     ) -> list[ContractCreate]:
+        portal_error: str | None = None
         try:
             raw_contracts = self.client.fetch_contratos(
                 data_inicio=data_inicio,
@@ -112,8 +130,22 @@ class IngestionPipeline:
                 codigo_orgao=codigo_orgao,
             )
         except Exception as exc:
-            errors.append(f"contracts_fetch_failed: {exc}")
-            return []
+            portal_error = f"portal_contracts_fetch_failed: {exc}"
+            raw_contracts = []
+
+        if not raw_contracts:
+            try:
+                raw_contracts = self.compras_client.fetch_contratos(
+                    data_inicio=data_inicio,
+                    data_fim=data_fim,
+                    pagina=pagina,
+                    codigo_orgao=codigo_orgao,
+                )
+            except Exception as exc:
+                if portal_error:
+                    errors.append(portal_error)
+                errors.append(f"comprasgov_contracts_fetch_failed: {exc}")
+                return []
 
         contracts: list[ContractCreate] = []
         for item in raw_contracts:
@@ -158,7 +190,34 @@ class IngestionPipeline:
         saved: list[Contract] = []
         for contract in contracts:
             try:
-                saved.append(repositories.upsert_contract(self.db, contract))
+                organization_id = contract.organization_id
+                supplier_company_id = contract.supplier_company_id
+
+                if contract.organization_payload is not None:
+                    organization = repositories.upsert_organization(
+                        self.db,
+                        contract.organization_payload,
+                    )
+                    organization_id = organization.id
+
+                if contract.supplier_payload is not None:
+                    supplier = repositories.upsert_company(
+                        self.db,
+                        contract.supplier_payload,
+                    )
+                    supplier_company_id = supplier.id
+
+                saved.append(
+                    repositories.upsert_contract(
+                        self.db,
+                        contract.model_copy(
+                            update={
+                                "organization_id": organization_id,
+                                "supplier_company_id": supplier_company_id,
+                            }
+                        ),
+                    )
+                )
             except Exception as exc:
                 errors.append(f"contract_persist_failed: {exc}")
         return saved
@@ -232,6 +291,7 @@ class IngestionPipeline:
                     alerts.append(alert)
 
             repositories.save_alerts(self.db, alerts)
+            delete_pattern("alerts:*")
             for alert in alerts:
                 dispatch_alert_webhook(alert)
         except Exception:

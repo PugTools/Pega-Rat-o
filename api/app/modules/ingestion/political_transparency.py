@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.cache import delete_pattern
 from app.db import repositories
 from app.db.models import Expense, Person
+from app.modules.alerts.risk_rules import check_asset_salary_ratio
 from app.modules.graphs.sync_service import GraphSyncService
 from app.modules.ingestion.camara_senado_client import (
     CamaraDadosAbertosClient,
@@ -149,8 +150,10 @@ class PoliticalTransparencyIngestion:
         if errors:
             logger.warning("political_ingestion_completed_with_errors: %s", errors)
 
+        self._generate_asset_alerts(saved_people, errors)
         self.db.commit()
         delete_pattern("persons:*")
+        delete_pattern("alerts:*")
 
         return PoliticalIngestionResult(
             politicians_found=len(politicians),
@@ -359,3 +362,18 @@ class PoliticalTransparencyIngestion:
         except Exception as exc:
             logger.exception("politician_graph_sync_failed")
             errors.append(f"politician_graph_sync_failed:{person.id}: {exc}")
+
+    def _generate_asset_alerts(
+        self,
+        people: list[Person],
+        errors: list[str],
+    ) -> None:
+        if not people:
+            return
+
+        try:
+            alerts = check_asset_salary_ratio(people)
+            repositories.save_alerts(self.db, alerts)
+        except Exception as exc:
+            logger.exception("politician_asset_alert_persist_failed")
+            errors.append(f"politician_asset_alert_persist_failed: {exc}")

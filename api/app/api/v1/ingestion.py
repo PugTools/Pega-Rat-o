@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.cache import redis_client
 from app.db.database import get_db
 from app.modules.auth.auth_service import get_current_user
+from app.modules.ingestion.pipeline import IngestionPipeline
 from app.modules.ingestion.political_transparency import PoliticalTransparencyIngestion
 from app.workers.ingestion_tasks import (
     task_run_daily_ingestion,
@@ -21,11 +22,23 @@ router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 @router.post("/run", status_code=status.HTTP_202_ACCEPTED)
 def trigger_daily_ingestion(
     current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
     data_inicio: date | None = None,
     data_fim: date | None = None,
     codigo_orgao: str | None = None,
     pagina: int = 1,
+    sync: bool = Query(default=False),
 ) -> dict[str, Any]:
+    if sync:
+        return _run_daily_ingestion_now(
+            db=db,
+            requested_by=current_user["email"],
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            codigo_orgao=codigo_orgao,
+            pagina=pagina,
+        )
+
     task = task_run_daily_ingestion.delay(
         data_inicio=data_inicio.isoformat() if data_inicio else None,
         data_fim=data_fim.isoformat() if data_fim else None,
@@ -48,8 +61,63 @@ def trigger_daily_ingestion(
             "data_fim": data_fim.isoformat() if data_fim else None,
             "codigo_orgao": codigo_orgao,
             "pagina": pagina,
+            "sync": sync,
         },
     }
+
+
+def _run_daily_ingestion_now(
+    db: Session,
+    requested_by: str,
+    data_inicio: date | None,
+    data_fim: date | None,
+    codigo_orgao: str | None,
+    pagina: int,
+) -> dict[str, Any]:
+    task_id = f"sync-daily-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    _record_admin_task_submission(
+        task_id=task_id,
+        job="daily_ingestion",
+        title="Ingestao de despesas e contratos",
+        requested_by=requested_by,
+    )
+
+    try:
+        pipeline = IngestionPipeline(db=db)
+        result = pipeline.run_daily_ingestion(
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            codigo_orgao=codigo_orgao,
+            pagina=pagina,
+        )
+    except Exception as exc:
+        error_payload = {"exception": repr(exc)}
+        _record_admin_task_result(
+            task_id=task_id,
+            job="daily_ingestion",
+            title="Ingestao de despesas e contratos",
+            requested_by=requested_by,
+            status_value="FAILURE",
+            result=error_payload,
+        )
+        raise
+
+    payload = {
+        "status": "completed",
+        "job": "daily_ingestion",
+        "task_id": task_id,
+        "requested_by": requested_by,
+        **result.to_dict(),
+    }
+    _record_admin_task_result(
+        task_id=task_id,
+        job="daily_ingestion",
+        title="Ingestao de despesas e contratos",
+        requested_by=requested_by,
+        status_value="SUCCESS",
+        result=payload,
+    )
+    return payload
 
 
 @router.post("/politicians/run")

@@ -57,6 +57,12 @@ class Person(Base):
     email: Mapped[str | None] = mapped_column(Text)
     latest_expense_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     latest_expense_year: Mapped[int | None] = mapped_column()
+    declared_assets_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    declared_assets_year: Mapped[int | None] = mapped_column()
+    salary_reference_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    salary_reference_year: Mapped[int | None] = mapped_column()
+    salary_reference_source: Mapped[str | None] = mapped_column(Text)
+    asset_salary_ratio: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -41,6 +41,12 @@ class PersonBase(BaseModel):
     email: str | None = None
     latest_expense_total: Decimal | None = None
     latest_expense_year: int | None = None
+    declared_assets_value: Decimal | None = None
+    declared_assets_year: int | None = None
+    salary_reference_value: Decimal | None = None
+    salary_reference_year: int | None = None
+    salary_reference_source: str | None = None
+    asset_salary_ratio: Decimal | None = None
 
 
 class PersonCreate(PersonBase):
@@ -151,6 +157,8 @@ class ContractBase(BaseModel):
     total_value: Decimal | None = None
     source_id: UUID | None = None
     raw_document_id: UUID | None = None
+    supplier_payload: CompanyCreate | None = Field(default=None, exclude=True)
+    organization_payload: OrganizationCreate | None = Field(default=None, exclude=True)
 
 
 class ContractCreate(ContractBase):
