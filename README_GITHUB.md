@@ -47,6 +47,12 @@ Para reiniciar tudo dentro do Codespace:
 docker compose up -d --build
 ```
 
+Por padrao sobem apenas os servicos essenciais para a aplicacao abrir: PostgreSQL, Redis, API, worker Celery e Web. Para subir grafo/busca/observabilidade tambem:
+
+```bash
+docker compose --profile analytics --profile monitoring up -d --build
+```
+
 Para OAuth real do Google em Codespaces, cadastre no Google Cloud Console a URL de callback gerada pelo Codespace:
 
 ```text

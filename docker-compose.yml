@@ -39,6 +39,7 @@ services:
   neo4j:
     image: neo4j:5
     container_name: ongp-neo4j
+    profiles: ["analytics"]
     restart: unless-stopped
     environment:
       NEO4J_AUTH: neo4j/ongp_password
@@ -64,11 +65,12 @@ services:
   elasticsearch:
     image: elasticsearch:8.11.0
     container_name: ongp-elasticsearch
+    profiles: ["analytics"]
     restart: unless-stopped
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      ES_JAVA_OPTS: -Xms256m -Xmx256m
     ports:
       - "9200:9200"
     volumes:
@@ -119,10 +121,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      neo4j:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
     networks:
       - ongp-net
 
@@ -159,10 +157,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      neo4j:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
     networks:
       - ongp-net
 
@@ -184,6 +178,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: ongp-prometheus
+    profiles: ["monitoring"]
     restart: unless-stopped
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -198,6 +193,7 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     container_name: ongp-grafana
+    profiles: ["monitoring"]
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: admin

@@ -287,6 +287,11 @@ class PoliticalTransparencyIngestion:
 
         if politician_payload.data_origin == "dados-abertos-senado" and not despesas_senado:
             return []
+        if politician_payload.data_origin not in {
+            "dados-abertos-camara",
+            "dados-abertos-senado",
+        }:
+            return []
 
         try:
             if politician_payload.data_origin == "dados-abertos-senado":

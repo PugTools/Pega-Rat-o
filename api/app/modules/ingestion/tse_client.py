@@ -64,11 +64,6 @@ class TseDadosAbertosClient:
         state_filter = _upper_text(state_code)
 
         archive = self._download_candidates_zip(year)
-        asset_totals = (
-            self._safe_fetch_asset_totals(year=year, state_code=state_filter)
-            if include_assets
-            else {}
-        )
         with zipfile.ZipFile(io.BytesIO(archive)) as zip_file:
             for file_name in self._candidate_csv_names(zip_file, state_filter):
                 with zip_file.open(file_name) as raw_file:
@@ -96,9 +91,19 @@ class TseDadosAbertosClient:
                         if limit is not None and quotas and all(
                             count >= limit for count in quotas.values()
                         ):
-                            return records
+                            return self._with_asset_totals(
+                                records=records,
+                                year=year,
+                                state_code=state_filter,
+                                include_assets=include_assets,
+                            )
 
-        return records
+        return self._with_asset_totals(
+            records=records,
+            year=year,
+            state_code=state_filter,
+            include_assets=include_assets,
+        )
 
     def transform_candidate(
         self,
@@ -180,9 +185,14 @@ class TseDadosAbertosClient:
         self,
         year: int,
         state_code: str | None,
+        candidate_ids: set[str] | None = None,
     ) -> dict[str, Decimal]:
         try:
-            return self._fetch_asset_totals(year=year, state_code=state_code)
+            return self._fetch_asset_totals(
+                year=year,
+                state_code=state_code,
+                candidate_ids=candidate_ids,
+            )
         except Exception:
             logger.exception("tse_asset_totals_fetch_failed", extra={"year": year})
             return {}
@@ -191,6 +201,7 @@ class TseDadosAbertosClient:
         self,
         year: int,
         state_code: str | None,
+        candidate_ids: set[str] | None = None,
     ) -> dict[str, Decimal]:
         archive = self._download_assets_zip(year)
         totals: dict[str, Decimal] = {}
@@ -203,10 +214,63 @@ class TseDadosAbertosClient:
                         candidate_id = _text(row.get("SQ_CANDIDATO"))
                         if not candidate_id:
                             continue
+                        if candidate_ids is not None and candidate_id not in candidate_ids:
+                            continue
                         totals[candidate_id] = totals.get(candidate_id, Decimal("0")) + _decimal(
                             row.get("VR_BEM_CANDIDATO")
                         )
         return totals
+
+    def _with_asset_totals(
+        self,
+        records: list[TsePoliticalRecord],
+        year: int,
+        state_code: str | None,
+        include_assets: bool,
+    ) -> list[TsePoliticalRecord]:
+        if not include_assets or not records:
+            return records
+
+        candidate_ids = {
+            record.person.external_id
+            for record in records
+            if record.person.external_id
+        }
+        asset_totals = self._safe_fetch_asset_totals(
+            year=year,
+            state_code=state_code,
+            candidate_ids=candidate_ids,
+        )
+        if not asset_totals:
+            return records
+
+        enriched: list[TsePoliticalRecord] = []
+        for record in records:
+            declared_assets_value = asset_totals.get(record.person.external_id or "")
+            if declared_assets_value is None:
+                enriched.append(record)
+                continue
+
+            enriched.append(
+                TsePoliticalRecord(
+                    person=record.person.model_copy(
+                        update={
+                            "declared_assets_value": declared_assets_value,
+                            "declared_assets_year": year,
+                            "asset_salary_ratio": asset_salary_ratio(
+                                declared_assets_value,
+                                record.role_name,
+                            ),
+                        }
+                    ),
+                    role_name=record.role_name,
+                    branch=record.branch,
+                    jurisdiction_level=record.jurisdiction_level,
+                    municipality_code=record.municipality_code,
+                )
+            )
+
+        return enriched
 
     def _candidate_csv_names(
         self,
