@@ -53,6 +53,18 @@ Por padrao sobem apenas os servicos essenciais para a aplicacao abrir: PostgreSQ
 docker compose --profile analytics --profile monitoring up -d --build
 ```
 
+Se o Docker do Codespaces retornar erro de rede como `network ... not found` ou `Resource is still in use`, use o reset seguro:
+
+```bash
+bash scripts/reset_codespaces_stack.sh app
+```
+
+Para reiniciar ja com Neo4j, Elasticsearch, Prometheus e Grafana:
+
+```bash
+bash scripts/reset_codespaces_stack.sh full
+```
+
 Para OAuth real do Google em Codespaces, cadastre no Google Cloud Console a URL de callback gerada pelo Codespace:
 
 ```text
