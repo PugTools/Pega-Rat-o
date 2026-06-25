@@ -4,7 +4,7 @@ from typing import Any
 
 import redis
 from celery.result import AsyncResult
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,8 +12,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.cache import redis_client
 from app.core.celery_app import celery_app
 from app.db.database import engine
+from app.modules.ingestion.base_government_connector import load_sources_registry
 from app.modules.auth.auth_service import get_current_user
-from app.modules.workers.ingestion_tasks import run_massive_ingestion
+from app.modules.workers.ingestion_tasks import SOURCE_ALIASES, run_massive_ingestion
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -21,6 +22,44 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 class MassiveIngestionRequest(BaseModel):
     source_key: str = Field(default="all", min_length=2, max_length=120)
+
+
+@router.get("/ingestion/sources")
+def list_massive_ingestion_sources(
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    registry = load_sources_registry()
+    items = [
+        {
+            "key": "all",
+            "name": "Todas as fontes habilitadas",
+            "enabled": True,
+            "source_type": "batch",
+            "destination_model": "mixed",
+            "base_url": "sources_registry.json",
+        }
+    ]
+    items.extend(
+        {
+            "key": key,
+            "name": config.name,
+            "enabled": config.enabled,
+            "source_type": config.source_type,
+            "destination_model": config.destination_model.rsplit(".", 1)[-1],
+            "base_url": config.base_url,
+        }
+        for key, config in sorted(
+            registry.items(),
+            key=lambda item: (not item[1].enabled, item[0]),
+        )
+    )
+    return {
+        "status": "success",
+        "requested_by": current_user["email"],
+        "total": len(registry),
+        "enabled": sum(1 for source in registry.values() if source.enabled),
+        "items": items,
+    }
 
 
 @router.get("/system-health")
@@ -83,19 +122,36 @@ def trigger_massive_ingestion(
     payload: MassiveIngestionRequest,
     current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    task = run_massive_ingestion.delay(payload.source_key)
+    requested_source_key = payload.source_key.strip().lower()
+    source_key = SOURCE_ALIASES.get(requested_source_key, requested_source_key)
+    registry = load_sources_registry()
+    if source_key != "all" and source_key not in registry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Fonte nao registrada: {payload.source_key}",
+        )
+    if source_key != "all" and not registry[source_key].enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Fonte registrada, mas desativada no sources_registry.json. "
+                "Ative a fonte somente apos validar transformador, credenciais e limites."
+            ),
+        )
+
+    task = run_massive_ingestion.delay(source_key)
     _record_admin_task_submission(
         task_id=task.id,
         job="massive_ingestion",
         title="Varredura governamental massiva",
         requested_by=current_user["email"],
-        metadata={"source_key": payload.source_key},
+        metadata={"source_key": source_key},
     )
     return {
         "status": "accepted",
         "job": "massive_ingestion",
         "task_id": task.id,
-        "source_key": payload.source_key,
+        "source_key": source_key,
         "requested_by": current_user["email"],
         "message": "Os robos de coleta foram iniciados em segundo plano.",
     }

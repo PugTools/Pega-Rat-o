@@ -59,7 +59,7 @@ def run_massive_ingestion(source_key: str) -> dict[str, Any]:
         selected_keys = [
             key
             for key, config in registry.items()
-            if config.enabled and key in SOURCE_ALIASES.values()
+            if config.enabled
         ]
     else:
         selected_keys = [requested_key]
@@ -184,6 +184,13 @@ def _sync_rows(
     if model == "CompanyCreate":
         companies = [_company_row(source_key, row) for row in rows]
         return {"nodes_synced": engine.sync_companies(companies), "kind": "companies"}
+
+    if model == "OrganizationCreate":
+        organizations = [_organization_row(source_key, row) for row in rows]
+        return {
+            "nodes_synced": engine.sync_organizations(organizations),
+            "kind": "organizations",
+        }
 
     if model == "ContractCreate":
         companies = [_supplier_company_row(source_key, row) for row in rows]

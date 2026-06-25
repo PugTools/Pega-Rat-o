@@ -72,6 +72,22 @@ type AdminActionResponse = {
   errors?: string[];
 };
 
+type IngestionSourceOption = {
+  key: string;
+  name: string;
+  enabled: boolean;
+  source_type: string;
+  destination_model: string;
+  base_url: string;
+};
+
+type IngestionSourcesResponse = {
+  status: string;
+  total: number;
+  enabled: number;
+  items: IngestionSourceOption[];
+};
+
 class ApiRequestError extends Error {
   status?: number;
   payload?: unknown;
@@ -98,6 +114,10 @@ export default function AdminPage() {
   const [lastResult, setLastResult] = useState<AdminActionResponse | null>(null);
   const [lastActionError, setLastActionError] = useState<unknown>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [sources, setSources] = useState<IngestionSourceOption[]>([]);
+  const [selectedSourceKey, setSelectedSourceKey] = useState("all");
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
 
   const servicesByName = useMemo(() => {
     const entries: Array<[string, HealthService]> =
@@ -113,6 +133,40 @@ export default function AdminPage() {
     () => logs.filter((log) => log.status === "error" || log.status === "warning").length,
     [logs],
   );
+
+  const loadSources = useCallback(async () => {
+    setSourcesLoading(true);
+    setSourcesError(null);
+    try {
+      const payload = await adminRequest<IngestionSourcesResponse>(
+        "/admin/ingestion/sources",
+        undefined,
+        10000,
+      );
+      const items = payload.items ?? [];
+      setSources(items);
+      setSelectedSourceKey((current) =>
+        items.some((source) => source.key === current && source.enabled)
+          ? current
+          : "all",
+      );
+    } catch (error) {
+      setSourcesError(humanErrorMessage(error));
+      setSources([
+        {
+          key: "all",
+          name: "Todas as fontes habilitadas",
+          enabled: true,
+          source_type: "batch",
+          destination_model: "mixed",
+          base_url: "sources_registry.json",
+        },
+      ]);
+      setSelectedSourceKey("all");
+    } finally {
+      setSourcesLoading(false);
+    }
+  }, []);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -171,6 +225,10 @@ export default function AdminPage() {
   }, [refreshAll]);
 
   useEffect(() => {
+    loadSources();
+  }, [loadSources]);
+
+  useEffect(() => {
     if (!pollingEnabled) {
       return;
     }
@@ -189,7 +247,7 @@ export default function AdminPage() {
         action === "massive"
           ? {
               method: "POST",
-              body: JSON.stringify({ source_key: "all" }),
+              body: JSON.stringify({ source_key: selectedSourceKey }),
             }
           : { method: "POST" },
         15000,
@@ -247,6 +305,11 @@ export default function AdminPage() {
       <MassiveIngestionPanel
         busy={runningAction === "massive"}
         disabled={actionsDisabled}
+        selectedSourceKey={selectedSourceKey}
+        sources={sources}
+        sourcesError={sourcesError}
+        sourcesLoading={sourcesLoading}
+        onSelectSource={setSelectedSourceKey}
         onRun={() => runAction("massive")}
       />
 
@@ -332,12 +395,38 @@ export default function AdminPage() {
 function MassiveIngestionPanel({
   busy,
   disabled,
+  selectedSourceKey,
+  sources,
+  sourcesError,
+  sourcesLoading,
+  onSelectSource,
   onRun,
 }: {
   busy: boolean;
   disabled: boolean;
+  selectedSourceKey: string;
+  sources: IngestionSourceOption[];
+  sourcesError: string | null;
+  sourcesLoading: boolean;
+  onSelectSource: (sourceKey: string) => void;
   onRun: () => void;
 }) {
+  const enabledCount = sources.filter((source) => source.enabled && source.key !== "all").length;
+  const sourcesForSelect =
+    sources.length > 0
+      ? sources
+      : [
+          {
+            key: "all",
+            name: "Todas as fontes habilitadas",
+            enabled: true,
+            source_type: "batch",
+            destination_model: "mixed",
+            base_url: "sources_registry.json",
+          },
+        ];
+  const selectedSource = sources.find((source) => source.key === selectedSourceKey);
+
   return (
     <section className="overflow-hidden rounded-lg border border-orange-200 bg-white shadow-sm dark:border-orange-900 dark:bg-slate-950">
       <div className="grid gap-0 lg:grid-cols-[1fr_auto]">
@@ -348,27 +437,65 @@ function MassiveIngestionPanel({
             </div>
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
-                Motor de Ingestao de Dados
+                Motor de Ingestao Massiva
               </p>
               <h3 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">
-                Varredura governamental massiva
+                Motor de Ingestao Massiva
               </h3>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 Dispara a fabrica de conectores para coletar fontes registradas,
                 normalizar lotes e sincronizar entidades no Neo4j em segundo plano.
               </p>
+              <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Fonte de dados
+                  </span>
+                  <select
+                    className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    disabled={sourcesLoading || busy}
+                    onChange={(event) => onSelectSource(event.target.value)}
+                    value={selectedSourceKey}
+                  >
+                    {sourcesForSelect.map((source) => (
+                      <option
+                        disabled={!source.enabled}
+                        key={source.key}
+                        value={source.key}
+                      >
+                        {source.key === "all"
+                          ? `${source.name} (${enabledCount || "carregando"} fontes)`
+                          : `${source.key} - ${source.name}${source.enabled ? "" : " (desativada)"}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                  <p className="font-semibold text-slate-950 dark:text-white">
+                    {sourcesLoading ? "Carregando fontes" : `${enabledCount} habilitada(s)`}
+                  </p>
+                  <p className="mt-1">
+                    Selecionada: {selectedSource?.source_type ?? "batch"}
+                  </p>
+                </div>
+              </div>
+              {sourcesError ? (
+                <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  Nao foi possivel carregar o registry completo: {sourcesError}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
         <div className="flex items-center border-t border-orange-100 bg-orange-50 p-5 dark:border-orange-900 dark:bg-orange-950/30 lg:border-l lg:border-t-0">
           <button
             className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-orange-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={disabled || busy}
+            disabled={disabled || busy || sourcesLoading}
             onClick={onRun}
             type="button"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}
-            {busy ? "Iniciando varredura..." : "Iniciar Varredura Governamental"}
+            {busy ? "Iniciando varredura..." : "Iniciar Varredura"}
           </button>
         </div>
       </div>
