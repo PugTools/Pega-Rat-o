@@ -1,10 +1,12 @@
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 const navigation = [
   { label: "Dashboard", href: "/" },
   { label: "Politicos", href: "/politicos" },
   { label: "Contratos", href: "/contratos" },
   { label: "Alertas", href: "/alertas" },
+  { label: "Sobre", href: "/sobre" },
   { label: "Admin", href: "/admin" },
 ];
 
@@ -19,6 +21,10 @@ export function Sidebar() {
           <h1 className="mt-2 text-lg font-semibold text-slate-950 dark:text-white">PEGA RATAO</h1>
         </div>
         <ThemeToggle />
+      </div>
+
+      <div className="mb-6">
+        <GlobalSearch />
       </div>
 
       <nav className="space-y-1">

@@ -16,7 +16,11 @@ def get_json_cache(key: str) -> Any | None:
         return None
     if payload is None:
         return None
-    return json.loads(payload)
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        delete_cache(key)
+        return None
 
 
 def set_json_cache(key: str, value: Any, ttl_seconds: int = 600) -> None:

@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { Building2, ExternalLink, FileText, Mail, MapPin, ReceiptText, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { PrintReportButton } from "@/components/PrintReportButton";
-import { api, type Expense, type PersonDetail } from "@/lib/api";
+import { RiskAlertCard } from "@/components/RiskAlertCard";
+import { api, type Expense, type PersonDetail, type RiskAlert } from "@/lib/api";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -11,7 +12,10 @@ type PageProps = {
 
 export default async function PoliticoDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const person = await getPerson(id);
+  const [person, alerts] = await Promise.all([
+    getPerson(id),
+    getPersonAlerts(id),
+  ]);
   if (!person) {
     notFound();
   }
@@ -97,7 +101,7 @@ export default async function PoliticoDetailPage({ params }: PageProps) {
       <section className="mt-5 grid gap-4 md:grid-cols-3">
         <Metric label="Gasto consolidado" value={currency(person.latest_expense_total)} />
         <Metric label="Ano de gastos" value={String(person.latest_expense_year ?? "-")} />
-        <Metric label="Despesas recentes" value={String(person.recent_expenses?.length ?? 0)} />
+        <Metric label="Sinais de risco" value={String(alerts.length)} />
       </section>
 
       <section className="mt-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -122,7 +126,44 @@ export default async function PoliticoDetailPage({ params }: PageProps) {
 
       <section className="mt-5 rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="text-base font-semibold text-slate-950">
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
+              Sinais de Risco
+            </span>
+            <span className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+              Despesas Recentes
+            </span>
+          </div>
+          <h3 className="mt-4 text-base font-semibold text-slate-950">
+            Sinais de Risco
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Alertas persistidos e achados Cypher do grafo investigativo, com explicabilidade e evidencias.
+          </p>
+        </div>
+        <div className="grid gap-4 p-5">
+          {alerts.map((alert) => (
+            <RiskAlertCard alert={alert} key={alert.id} />
+          ))}
+          {!alerts.length ? (
+            <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+              Nenhum sinal de risco registrado para esta entidade ate agora.
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+              Sinais de Risco
+            </span>
+            <span className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">
+              Despesas Recentes
+            </span>
+          </div>
+          <h3 className="mt-4 text-base font-semibold text-slate-950">
             Despesas recentes vinculadas
           </h3>
           <p className="mt-1 text-sm text-slate-500">
@@ -149,6 +190,14 @@ async function getPerson(id: string): Promise<PersonDetail | null> {
     return await api.getPerson(id);
   } catch {
     return null;
+  }
+}
+
+async function getPersonAlerts(id: string): Promise<RiskAlert[]> {
+  try {
+    return await api.listEntityAlerts("person", id, 25);
+  } catch {
+    return [];
   }
 }
 

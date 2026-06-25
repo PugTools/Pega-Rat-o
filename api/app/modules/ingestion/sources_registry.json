@@ -1,0 +1,1594 @@
+{
+  "version": "2.0",
+  "description": "Registro extensivel de fontes oficiais brasileiras para conectores massivos do ONGP.",
+  "sources": [
+    {
+      "key": "portal_transparencia_despesas",
+      "name": "Portal da Transparencia - Despesas",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/despesas/documentos"
+      },
+      "rate_limit": {
+        "requests_per_minute": 90
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "portal_transparencia_contratos",
+      "name": "Portal da Transparencia - Contratos",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/contratos"
+      },
+      "rate_limit": {
+        "requests_per_minute": 90
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "portal_transparencia_remuneracoes",
+      "name": "Portal da Transparencia - Servidores Remuneracao",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/servidores/remuneracao"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "portal_transparencia_licitacoes",
+      "name": "Portal da Transparencia - Licitacoes",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/licitacoes"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "portal_transparencia_convenios",
+      "name": "Portal da Transparencia - Convenios",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/convenios"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "portal_transparencia_emendas",
+      "name": "Portal da Transparencia - Emendas Parlamentares",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/emendas"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "portal_transparencia_ceis",
+      "name": "Portal da Transparencia - CEIS",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.CompanyCreate",
+      "enabled": false,
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/sancoes/ceis"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "portal_transparencia_cnep",
+      "name": "Portal da Transparencia - CNEP",
+      "category": "governo_federal",
+      "base_url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.CompanyCreate",
+      "enabled": false,
+      "auth_header": "chave-api-dados",
+      "auth_env": "portal_transparencia_api_key",
+      "endpoints": {
+        "default": "/sancoes/cnep"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "camara_deputados",
+      "name": "Camara dos Deputados - Deputados",
+      "category": "legislativo_federal",
+      "base_url": "https://dadosabertos.camara.leg.br/api/v2",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.PersonCreate",
+      "endpoints": {
+        "default": "/deputados",
+        "despesas": "/deputados/{id}/despesas"
+      },
+      "rate_limit": {
+        "requests_per_minute": 120
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.0
+      }
+    },
+    {
+      "key": "camara_deputados_despesas",
+      "name": "Camara dos Deputados - Despesas por Deputado",
+      "category": "legislativo_federal",
+      "base_url": "https://dadosabertos.camara.leg.br/api/v2",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/deputados/{id}/despesas"
+      },
+      "rate_limit": {
+        "requests_per_minute": 120
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.0
+      }
+    },
+    {
+      "key": "camara_orgaos",
+      "name": "Camara dos Deputados - Orgaos",
+      "category": "legislativo_federal",
+      "base_url": "https://dadosabertos.camara.leg.br/api/v2",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/orgaos"
+      },
+      "rate_limit": {
+        "requests_per_minute": 120
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.0
+      }
+    },
+    {
+      "key": "senado_parlamentares",
+      "name": "Senado Federal - Parlamentares",
+      "category": "legislativo_federal",
+      "base_url": "https://legis.senado.leg.br/dadosabertos",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.PersonCreate",
+      "endpoints": {
+        "default": "/senador/lista/atual",
+        "gastos": "/senador/{id}/gastos"
+      },
+      "rate_limit": {
+        "requests_per_minute": 90
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.0
+      }
+    },
+    {
+      "key": "senado_ceaps",
+      "name": "Senado Federal - CEAPS Despesas",
+      "category": "legislativo_federal",
+      "base_url": "https://adm.senado.gov.br/adm-dadosabertos/api/v1",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/senadores/despesas_ceaps/{year}"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "tse_candidatos",
+      "name": "TSE - Candidatos",
+      "category": "justica_eleitoral",
+      "base_url": "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand",
+      "source_type": "zip_csv",
+      "destination_model": "app.schemas.core_schemas.PersonCreate",
+      "endpoints": {
+        "default": "/consulta_cand_{year}.zip"
+      },
+      "encoding": "latin-1",
+      "csv_delimiter": ";",
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 5,
+        "backoff_seconds": 3.0
+      }
+    },
+    {
+      "key": "tse_bens_candidatos",
+      "name": "TSE - Bens Declarados",
+      "category": "justica_eleitoral",
+      "base_url": "https://cdn.tse.jus.br/estatistica/sead/odsele/bem_candidato",
+      "source_type": "zip_csv",
+      "destination_model": "app.schemas.core_schemas.PersonCreate",
+      "endpoints": {
+        "default": "/bem_candidato_{year}.zip"
+      },
+      "encoding": "latin-1",
+      "csv_delimiter": ";",
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 5,
+        "backoff_seconds": 3.0
+      }
+    },
+    {
+      "key": "comprasgov_contratos",
+      "name": "ComprasGov - Contratos",
+      "category": "compras_publicas",
+      "base_url": "https://contratos.comprasnet.gov.br/api",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "endpoints": {
+        "default": "/contrato"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "receita_federal_cnpj",
+      "name": "Receita Federal - Dados Publicos CNPJ",
+      "category": "cadastro_publico",
+      "base_url": "https://arquivos.receitafederal.gov.br/dados/cnpj/dados_abertos_cnpj",
+      "source_type": "zip_csv",
+      "destination_model": "app.schemas.core_schemas.CompanyCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/{year}-{month}/"
+      },
+      "encoding": "latin-1",
+      "csv_delimiter": ";",
+      "rate_limit": {
+        "requests_per_minute": 20
+      },
+      "retry": {
+        "attempts": 5,
+        "backoff_seconds": 5.0
+      }
+    },
+    {
+      "key": "tesouro_transparente_ckan",
+      "name": "Tesouro Transparente - Catalogo CKAN",
+      "category": "governo_federal",
+      "base_url": "https://www.tesourotransparente.gov.br/ckan",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos despesas convenios",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "dados_gov_br_catalogo_federal",
+      "name": "dados.gov.br - Catalogo Federal Geral",
+      "category": "governo_federal",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "contratos despesas convenios licitacoes"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados",
+        "organizacoes": "/dados/api/publico/organizacao"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_saude",
+      "name": "dados.gov.br - Ministerio da Saude",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio da Saude contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "opendatasus_catalogo",
+      "name": "OpenDataSUS - Catalogo de Dados",
+      "category": "ministerios_federais",
+      "base_url": "https://opendatasus.saude.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_educacao",
+      "name": "dados.gov.br - Ministerio da Educacao",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio da Educacao contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_fazenda",
+      "name": "dados.gov.br - Ministerio da Fazenda",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio da Fazenda contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_gestao_inovacao",
+      "name": "dados.gov.br - Ministerio da Gestao e Inovacao",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio da Gestao e da Inovacao contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_planejamento",
+      "name": "dados.gov.br - Ministerio do Planejamento e Orcamento",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio do Planejamento e Orcamento contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_transportes",
+      "name": "dados.gov.br - Ministerio dos Transportes",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio dos Transportes contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_cidades",
+      "name": "dados.gov.br - Ministerio das Cidades",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio das Cidades contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_justica",
+      "name": "dados.gov.br - Ministerio da Justica e Seguranca Publica",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio da Justica e Seguranca Publica contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ministerio_defesa",
+      "name": "dados.gov.br - Ministerio da Defesa",
+      "category": "ministerios_federais",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Ministerio da Defesa contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "mme_ckan_contratos",
+      "name": "Ministerio de Minas e Energia - Dados Abertos",
+      "category": "ministerios_federais",
+      "base_url": "https://dadosabertos.mme.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "presidencia_ckan_contratos",
+      "name": "Presidencia da Republica - Dados Abertos",
+      "category": "governo_federal",
+      "base_url": "https://dadosabertos.presidencia.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "aneel_ckan_contratos",
+      "name": "ANEEL - Dados Abertos",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dadosabertos.aneel.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "antt_ckan_contratos",
+      "name": "ANTT - Dados Abertos",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.antt.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "cvm_ckan_contratos",
+      "name": "CVM - Dados Abertos",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.cvm.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "ibama_ckan_autuacoes",
+      "name": "IBAMA - Dados Abertos Autuacoes",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dadosabertos.ibama.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.CompanyCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "autuacoes",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "dados_gov_br_anvisa",
+      "name": "dados.gov.br - ANVISA",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "ANVISA contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_anac",
+      "name": "dados.gov.br - ANAC",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "ANAC contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_anatel",
+      "name": "dados.gov.br - ANATEL",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "ANATEL contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_ana",
+      "name": "dados.gov.br - ANA",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "ANA Agencia Nacional de Aguas contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_anp",
+      "name": "dados.gov.br - ANP",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "ANP contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_antaq",
+      "name": "dados.gov.br - ANTAQ",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "ANTAQ contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_anm",
+      "name": "dados.gov.br - ANM",
+      "category": "agencias_reguladoras",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "ANM Agencia Nacional de Mineracao contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "bcb_ckan_dados_abertos",
+      "name": "Banco Central - Dados Abertos CKAN",
+      "category": "bancos_publicos",
+      "base_url": "https://dadosabertos.bcb.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "instituicoes financeiras",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "bcb_olinda_if_data",
+      "name": "Banco Central - API Olinda",
+      "category": "bancos_publicos",
+      "base_url": "https://olinda.bcb.gov.br/olinda/servico",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "bndes_ckan_contratos",
+      "name": "BNDES - Dados Abertos",
+      "category": "bancos_publicos",
+      "base_url": "https://dadosabertos.bndes.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos operacoes financiamento",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "caixa_downloads_contratos",
+      "name": "Caixa Economica Federal - Dados e Downloads Institucionais",
+      "category": "bancos_publicos",
+      "base_url": "https://www.caixa.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/Downloads"
+      },
+      "rate_limit": {
+        "requests_per_minute": 20
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_banco_do_brasil",
+      "name": "dados.gov.br - Banco do Brasil",
+      "category": "bancos_publicos",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Banco do Brasil contratos convenios"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_policia_federal",
+      "name": "dados.gov.br - Policia Federal",
+      "category": "seguranca_publica",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Policia Federal contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_policia_rodoviaria_federal",
+      "name": "dados.gov.br - Policia Rodoviaria Federal",
+      "category": "seguranca_publica",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Policia Rodoviaria Federal contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_exercito",
+      "name": "dados.gov.br - Exercito Brasileiro",
+      "category": "forcas_armadas",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Exercito Brasileiro contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_marinha",
+      "name": "dados.gov.br - Marinha do Brasil",
+      "category": "forcas_armadas",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Marinha do Brasil contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "dados_gov_br_aeronautica",
+      "name": "dados.gov.br - Forca Aerea Brasileira",
+      "category": "forcas_armadas",
+      "base_url": "https://dados.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "requires_token": true,
+      "default_params": {
+        "pagina": 1,
+        "nomeConjuntoDados": "Forca Aerea Brasileira contratos despesas"
+      },
+      "endpoints": {
+        "default": "/dados/api/publico/conjuntos-dados"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "tce_sp_municipios",
+      "name": "TCE-SP - Municipios Fiscalizados",
+      "category": "tribunais_contas_estaduais",
+      "base_url": "https://transparencia.tce.sp.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "endpoints": {
+        "default": "/api/json/municipios"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "tce_sp_despesas_municipais",
+      "name": "TCE-SP - Despesas Municipais",
+      "category": "tribunais_contas_estaduais",
+      "base_url": "https://transparencia.tce.sp.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/api/json/despesas/{municipio}/{year}/{month}"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "tce_rj_api_docs",
+      "name": "TCE-RJ - Dados Abertos API",
+      "category": "tribunais_contas_estaduais",
+      "base_url": "https://dados.tcerj.tc.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/api/v1/docs"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "tce_pe_dados_abertos",
+      "name": "TCE-PE - Dados Abertos API",
+      "category": "tribunais_contas_estaduais",
+      "base_url": "https://sistemas.tcepe.tc.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/DadosAbertos/Exemplo!listar"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "tce_ce_sim",
+      "name": "TCE-CE - SIM Dados Abertos",
+      "category": "tribunais_contas_estaduais",
+      "base_url": "https://api-dados-abertos.tce.ce.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/sim/"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "tce_rn_dados_abertos",
+      "name": "TCE-RN - API Dados Abertos",
+      "category": "tribunais_contas_estaduais",
+      "base_url": "https://apidadosabertos.tce.rn.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "sp_dados_abertos_contratos",
+      "name": "Sao Paulo - Dados Abertos Contratos",
+      "category": "portais_estaduais",
+      "base_url": "https://dadosabertos.sp.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "sp_dados_abertos_despesas",
+      "name": "Sao Paulo - Dados Abertos Despesas",
+      "category": "portais_estaduais",
+      "base_url": "https://dadosabertos.sp.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "despesas",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "rj_dados_abertos_contratos",
+      "name": "Rio de Janeiro - Dados Abertos Contratos",
+      "category": "portais_estaduais",
+      "base_url": "https://dadosabertos.rj.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "rj_dados_abertos_despesas",
+      "name": "Rio de Janeiro - Dados Abertos Despesas",
+      "category": "portais_estaduais",
+      "base_url": "https://dadosabertos.rj.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "despesas",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "mg_dados_abertos_contratos",
+      "name": "Minas Gerais - Dados Abertos Contratos",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.mg.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "mg_dados_abertos_despesas",
+      "name": "Minas Gerais - Dados Abertos Despesas",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.mg.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "despesas",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 4,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "sc_dados_abertos_contratos",
+      "name": "Santa Catarina - Dados Abertos Contratos",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.sc.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "sc_dados_abertos_despesas",
+      "name": "Santa Catarina - Dados Abertos Despesas",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.sc.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "despesas",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "rs_dados_abertos_contratos",
+      "name": "Rio Grande do Sul - Dados Abertos Contratos",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.rs.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "rs_dados_abertos_despesas",
+      "name": "Rio Grande do Sul - Dados Abertos Despesas",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.rs.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "despesas",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "pr_transparencia_portal",
+      "name": "Parana - Portal da Transparencia",
+      "category": "portais_estaduais",
+      "base_url": "https://www.transparencia.pr.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.OrganizationCreate",
+      "enabled": false,
+      "endpoints": {
+        "default": "/"
+      },
+      "rate_limit": {
+        "requests_per_minute": 30
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 2.0
+      }
+    },
+    {
+      "key": "ba_dados_abertos_contratos",
+      "name": "Bahia - Dados Abertos Contratos",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.ba.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "ba_dados_abertos_despesas",
+      "name": "Bahia - Dados Abertos Despesas",
+      "category": "portais_estaduais",
+      "base_url": "https://dados.ba.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ExpenseCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "despesas",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    },
+    {
+      "key": "artesp_dados_abertos_contratos",
+      "name": "ARTESP - Dados Abertos",
+      "category": "portais_estaduais",
+      "base_url": "https://dadosabertos.artesp.sp.gov.br",
+      "source_type": "json",
+      "destination_model": "app.schemas.core_schemas.ContractCreate",
+      "enabled": false,
+      "default_params": {
+        "q": "contratos",
+        "rows": 50
+      },
+      "endpoints": {
+        "default": "/api/3/action/package_search"
+      },
+      "rate_limit": {
+        "requests_per_minute": 60
+      },
+      "retry": {
+        "attempts": 3,
+        "backoff_seconds": 1.5
+      }
+    }
+  ]
+}

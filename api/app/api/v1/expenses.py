@@ -4,8 +4,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.cache import get_json_cache, set_json_cache
 from app.db.database import get_db
-from app.db.models import Expense
+from app.db.models import Company, Expense, RawDocument
 from app.schemas.core_schemas import ExpenseResponse
 
 
@@ -25,8 +26,22 @@ def list_expenses(
     state_code: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-) -> list[Expense]:
-    query = db.query(Expense)
+) -> list[dict]:
+    cache_key = (
+        "expenses:list:"
+        f"{skip}:{limit}:{organization_id or ''}:{person_id or ''}:"
+        f"{company_id or ''}:{contract_id or ''}:{fiscal_year or ''}:"
+        f"{state_code or ''}:{date_from or ''}:{date_to or ''}"
+    )
+    cached = get_json_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    query = (
+        db.query(Expense, Company, RawDocument)
+        .outerjoin(Company, Expense.company_id == Company.id)
+        .outerjoin(RawDocument, Expense.raw_document_id == RawDocument.id)
+    )
 
     if organization_id:
         query = query.filter(Expense.organization_id == organization_id)
@@ -45,16 +60,65 @@ def list_expenses(
     if date_to:
         query = query.filter(Expense.expense_date <= date_to)
 
-    return query.order_by(Expense.expense_date.desc()).offset(skip).limit(limit).all()
+    rows = (
+        query.order_by(Expense.expense_date.desc(), Expense.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    payload = [_expense_payload(*row) for row in rows]
+    set_json_cache(cache_key, payload, ttl_seconds=300)
+    return payload
 
 
 @router.get("/{expense_id}", response_model=ExpenseResponse)
-def get_expense(expense_id: UUID, db: Session = Depends(get_db)) -> Expense:
-    expense = db.get(Expense, expense_id)
-    if expense is None:
+def get_expense(expense_id: UUID, db: Session = Depends(get_db)) -> dict:
+    cache_key = f"expenses:detail:{expense_id}"
+    cached = get_json_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    row = (
+        db.query(Expense, Company, RawDocument)
+        .outerjoin(Company, Expense.company_id == Company.id)
+        .outerjoin(RawDocument, Expense.raw_document_id == RawDocument.id)
+        .filter(Expense.id == expense_id)
+        .one_or_none()
+    )
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Expense not found.",
         )
 
-    return expense
+    payload = _expense_payload(*row)
+    set_json_cache(cache_key, payload, ttl_seconds=300)
+    return payload
+
+
+def _expense_payload(
+    expense: Expense,
+    supplier: Company | None,
+    raw_document: RawDocument | None,
+) -> dict:
+    payload = ExpenseResponse.model_validate(expense).model_dump(mode="json")
+    payload["supplier_company_id"] = str(supplier.id) if supplier else (
+        str(expense.company_id) if expense.company_id else None
+    )
+    payload["supplier_name"] = supplier.legal_name if supplier else None
+    payload["supplier_cnpj"] = supplier.cnpj if supplier else None
+    payload["document_url"] = _document_url(raw_document)
+    return payload
+
+
+def _document_url(raw_document: RawDocument | None) -> str | None:
+    if raw_document is None:
+        return None
+
+    metadata = raw_document.metadata_json or {}
+    for key in ("document_url", "official_url", "url", "source_url", "nota_fiscal_url"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return raw_document.original_url or raw_document.storage_uri

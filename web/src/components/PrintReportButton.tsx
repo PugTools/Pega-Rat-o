@@ -5,7 +5,7 @@ import { Printer } from "lucide-react";
 export function PrintReportButton({ label = "Imprimir relatorio" }: { label?: string }) {
   return (
     <button
-      className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 print:hidden"
+      className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 print:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
       onClick={() => window.print()}
       type="button"
     >

@@ -133,6 +133,23 @@ export type RiskAlert = {
   evidence: Record<string, unknown>;
   status: string;
   created_at: string;
+  source?: string;
+};
+
+export type SearchResult = {
+  id: string;
+  entity_type: "person" | "company" | "contract" | "organization" | string;
+  label: string;
+  subtitle?: string | null;
+  href: string;
+  score?: number | string | null;
+  source?: Record<string, unknown>;
+};
+
+export type SearchResponse = {
+  query: string;
+  total: number;
+  items: SearchResult[];
 };
 
 export type GraphNode = {
@@ -279,6 +296,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
+    signal: init?.signal,
   });
 
   if (!response.ok) {
@@ -297,6 +315,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   listCompanies: (limit = 50) => request<Company[]>(`/companies?limit=${limit}`),
   getCompany: (id: string) => request<Company>(`/companies/${id}`),
+  search: (query: string, limit = 8, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    return request<SearchResponse>(`/search?${params.toString()}`, { signal });
+  },
   listPersons: async (params: number | ListPersonsParams = 50) => {
     const resolvedParams =
       typeof params === "number" ? { limit: params } : { limit: 50, ...params };
@@ -350,6 +372,10 @@ export const api = {
   getContract: (id: string) => request<ContractDetail>(`/contracts/${id}`),
   listExpenses: (limit = 50) => request<Expense[]>(`/expenses?limit=${limit}`),
   listAlerts: (limit = 50) => request<RiskAlert[]>(`/alerts?limit=${limit}`),
+  listEntityAlerts: (entityType: string, entityId: string, limit = 50) =>
+    request<RiskAlert[]>(
+      `/alerts/entity/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?limit=${limit}`,
+    ),
   askCopilot: (question: string) =>
     request<CopilotResponse>("/copilot/chat", {
       method: "POST",

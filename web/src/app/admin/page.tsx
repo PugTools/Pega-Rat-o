@@ -6,8 +6,10 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  Flame,
   Loader2,
   Play,
+  Radar,
   RefreshCw,
   Server,
   Terminal,
@@ -49,7 +51,7 @@ type ConnectionState = {
   technicalDetails?: unknown;
 };
 
-type ActionKey = "politicians" | "politiciansFull" | "daily";
+type ActionKey = "massive" | "politicians" | "politiciansFull" | "daily";
 
 type AdminActionResponse = {
   status: string;
@@ -61,7 +63,12 @@ type AdminActionResponse = {
   expenses_saved?: number;
   contracts_found?: number;
   contracts_saved?: number;
+  rows_collected?: number;
+  nodes_synced?: number;
+  sources_processed?: number;
+  source_key?: string;
   source_counts?: Record<string, number>;
+  message?: string;
   errors?: string[];
 };
 
@@ -90,6 +97,7 @@ export default function AdminPage() {
   const [runningAction, setRunningAction] = useState<ActionKey | null>(null);
   const [lastResult, setLastResult] = useState<AdminActionResponse | null>(null);
   const [lastActionError, setLastActionError] = useState<unknown>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const servicesByName = useMemo(() => {
     const entries: Array<[string, HealthService]> =
@@ -178,10 +186,19 @@ export default function AdminPage() {
     try {
       const payload = await adminRequest<AdminActionResponse>(
         ingestionPath(action),
-        { method: "POST" },
+        action === "massive"
+          ? {
+              method: "POST",
+              body: JSON.stringify({ source_key: "all" }),
+            }
+          : { method: "POST" },
         15000,
       );
       setLastResult(payload);
+      if (action === "massive") {
+        setToastMessage("Os robos de coleta foram iniciados em segundo plano.");
+        window.setTimeout(() => setToastMessage(null), 6000);
+      }
       await refreshAll();
       window.setTimeout(refreshAll, 2500);
     } catch (error) {
@@ -224,7 +241,14 @@ export default function AdminPage() {
       />
 
       {lastActionError ? <ActionError error={lastActionError} /> : null}
+      {toastMessage ? <ToastSuccess message={toastMessage} /> : null}
       {lastResult ? <LastResultCard result={lastResult} /> : null}
+
+      <MassiveIngestionPanel
+        busy={runningAction === "massive"}
+        disabled={actionsDisabled}
+        onRun={() => runAction("massive")}
+      />
 
       <section className="grid gap-4 lg:grid-cols-3">
         <ActionCard
@@ -302,6 +326,53 @@ export default function AdminPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function MassiveIngestionPanel({
+  busy,
+  disabled,
+  onRun,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  onRun: () => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-orange-200 bg-white shadow-sm dark:border-orange-900 dark:bg-slate-950">
+      <div className="grid gap-0 lg:grid-cols-[1fr_auto]">
+        <div className="p-5">
+          <div className="flex items-start gap-3">
+            <div className="rounded-md bg-orange-100 p-2 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+              <Radar className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
+                Motor de Ingestao de Dados
+              </p>
+              <h3 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">
+                Varredura governamental massiva
+              </h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                Dispara a fabrica de conectores para coletar fontes registradas,
+                normalizar lotes e sincronizar entidades no Neo4j em segundo plano.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center border-t border-orange-100 bg-orange-50 p-5 dark:border-orange-900 dark:bg-orange-950/30 lg:border-l lg:border-t-0">
+          <button
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-orange-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={disabled || busy}
+            onClick={onRun}
+            type="button"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}
+            {busy ? "Iniciando varredura..." : "Iniciar Varredura Governamental"}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -487,7 +558,14 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
               : "Execucao concluida"}
           </h3>
           <p className="mt-1 text-sm text-emerald-900 dark:text-emerald-200">
-            {successMessage(result.contracts_saved !== undefined ? "daily" : "politicians", result)}
+            {successMessage(
+              result.job === "massive_ingestion"
+                ? "massive"
+                : result.contracts_saved !== undefined
+                  ? "daily"
+                  : "politicians",
+              result,
+            )}
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -513,6 +591,20 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
           TSE 2022 {tse2022Count}.
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function ToastSuccess({ message }: { message: string }) {
+  return (
+    <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+      <div className="flex gap-3">
+        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+        <div>
+          <p className="font-semibold">Ignicao confirmada</p>
+          <p className="mt-1">{message}</p>
+        </div>
+      </div>
     </section>
   );
 }
@@ -668,6 +760,10 @@ async function parseResponseBody(response: Response) {
 }
 
 function ingestionPath(action: ActionKey) {
+  if (action === "massive") {
+    return "/admin/ingestion/run";
+  }
+
   if (action === "politicians") {
     return "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=5&incluir_senado=true&despesas_senado=false&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50&patrimonio_tse=false&sync_graph=false";
   }
@@ -759,6 +855,11 @@ function messageFromErrorPayload(payload: unknown) {
 function successMessage(action: ActionKey, payload: AdminActionResponse) {
   if (payload.status === "accepted") {
     return `Tarefa enviada para a fila. ID: ${payload.task_id ?? "sem id"}. Acompanhe no monitor de logs.`;
+  }
+
+  if (action === "massive") {
+    const warningText = payload.errors?.length ? ` com ${payload.errors.length} aviso(s)` : "";
+    return `${payload.sources_processed ?? 0} fonte(s), ${payload.rows_collected ?? 0} registro(s) coletados e ${payload.nodes_synced ?? 0} no grafo${warningText}.`;
   }
 
   if (

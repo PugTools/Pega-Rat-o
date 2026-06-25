@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.database import get_db
-from app.db.models import Contract, Expense
+from app.db.models import Company, Contract, Expense, RawDocument
 from app.schemas.core_schemas import ContractDetailResponse, ContractResponse, ExpenseResponse
 
 
@@ -63,8 +63,10 @@ def get_contract(contract_id: UUID, db: Session = Depends(get_db)) -> dict:
         )
 
     payload = ContractResponse.model_validate(contract).model_dump(mode="json")
-    expenses = (
-        db.query(Expense)
+    expense_rows = (
+        db.query(Expense, Company, RawDocument)
+        .outerjoin(Company, Expense.company_id == Company.id)
+        .outerjoin(RawDocument, Expense.raw_document_id == RawDocument.id)
         .filter(Expense.contract_id == contract_id)
         .order_by(Expense.expense_date.desc(), Expense.created_at.desc())
         .limit(50)
@@ -100,9 +102,34 @@ def get_contract(contract_id: UUID, db: Session = Depends(get_db)) -> dict:
         if contract.organization
         else None
     )
-    payload["expenses"] = [
-        ExpenseResponse.model_validate(expense).model_dump(mode="json")
-        for expense in expenses
-    ]
-    payload["expense_total"] = str(sum((expense.amount or 0) for expense in expenses))
+    payload["expenses"] = [_expense_payload(*row) for row in expense_rows]
+    payload["expense_total"] = str(sum((expense.amount or 0) for expense, _, _ in expense_rows))
     return payload
+
+
+def _expense_payload(
+    expense: Expense,
+    supplier: Company | None,
+    raw_document: RawDocument | None,
+) -> dict:
+    payload = ExpenseResponse.model_validate(expense).model_dump(mode="json")
+    payload["supplier_company_id"] = str(supplier.id) if supplier else (
+        str(expense.company_id) if expense.company_id else None
+    )
+    payload["supplier_name"] = supplier.legal_name if supplier else None
+    payload["supplier_cnpj"] = supplier.cnpj if supplier else None
+    payload["document_url"] = _document_url(raw_document)
+    return payload
+
+
+def _document_url(raw_document: RawDocument | None) -> str | None:
+    if raw_document is None:
+        return None
+
+    metadata = raw_document.metadata_json or {}
+    for key in ("document_url", "official_url", "url", "source_url", "nota_fiscal_url"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return raw_document.original_url or raw_document.storage_uri

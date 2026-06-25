@@ -4,7 +4,8 @@ from typing import Any
 
 import redis
 from celery.result import AsyncResult
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -12,9 +13,14 @@ from app.core.cache import redis_client
 from app.core.celery_app import celery_app
 from app.db.database import engine
 from app.modules.auth.auth_service import get_current_user
+from app.modules.workers.ingestion_tasks import run_massive_ingestion
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class MassiveIngestionRequest(BaseModel):
+    source_key: str = Field(default="all", min_length=2, max_length=120)
 
 
 @router.get("/system-health")
@@ -69,6 +75,29 @@ def get_system_logs(
         "status": "success",
         "requested_by": current_user["email"],
         "logs": logs,
+    }
+
+
+@router.post("/ingestion/run", status_code=status.HTTP_202_ACCEPTED)
+def trigger_massive_ingestion(
+    payload: MassiveIngestionRequest,
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    task = run_massive_ingestion.delay(payload.source_key)
+    _record_admin_task_submission(
+        task_id=task.id,
+        job="massive_ingestion",
+        title="Varredura governamental massiva",
+        requested_by=current_user["email"],
+        metadata={"source_key": payload.source_key},
+    )
+    return {
+        "status": "accepted",
+        "job": "massive_ingestion",
+        "task_id": task.id,
+        "source_key": payload.source_key,
+        "requested_by": current_user["email"],
+        "message": "Os robos de coleta foram iniciados em segundo plano.",
     }
 
 
@@ -258,6 +287,8 @@ def _friendly_title(result: Any, raw_status: str) -> str:
             return "Sincronizacao politica nacional"
         if job == "daily_ingestion":
             return "Ingestao Portal da Transparencia"
+        if job == "massive_ingestion":
+            return "Varredura governamental massiva"
         if "politicians_found" in result:
             return "Sincronizacao de politicos"
         if "contracts_saved" in result or "expenses_saved" in result:
@@ -277,6 +308,21 @@ def _friendly_message(result: Any, raw_status: str, status: str) -> str:
         return "A tarefa foi enviada e ainda esta em execucao ou aguardando o worker."
 
     if isinstance(result, dict):
+        if result.get("job") == "massive_ingestion":
+            processed = result.get("sources_processed", 0)
+            rows = result.get("rows_collected", 0)
+            synced = result.get("nodes_synced", 0)
+            errors = result.get("errors") or []
+            if errors:
+                return (
+                    f"Varredura processou {processed} fonte(s), coletou {rows} "
+                    f"registro(s) e sincronizou {synced} no grafo com {len(errors)} aviso(s)."
+                )
+            return (
+                f"Varredura processou {processed} fonte(s), coletou {rows} "
+                f"registro(s) e sincronizou {synced} no grafo."
+            )
+
         errors = result.get("errors") or []
         politicians = result.get("politicians_saved")
         found = result.get("politicians_found")
@@ -305,3 +351,29 @@ def _friendly_message(result: Any, raw_status: str, status: str) -> str:
     if raw_status == "SUCCESS":
         return "A tarefa terminou sem erros registrados."
     return f"Status atual: {raw_status}."
+
+
+def _record_admin_task_submission(
+    task_id: str,
+    job: str,
+    title: str,
+    requested_by: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    payload = {
+        "task_id": task_id,
+        "job": job,
+        "title": title,
+        "requested_by": requested_by,
+        "status": "PENDING",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "metadata": metadata or {},
+    }
+    try:
+        redis_client.setex(
+            f"admin-system-log-{task_id}",
+            86400,
+            json.dumps(payload, default=str),
+        )
+    except redis.RedisError:
+        return
