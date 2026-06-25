@@ -65,6 +65,10 @@ class GraphSyncService:
         )
 
     def ensure_constraints(self) -> None:
+        if not self.connection.verify():
+            logger.warning("neo4j_constraints_skipped_unavailable")
+            return
+
         statements = [
             "CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.id IS UNIQUE",
             "CREATE CONSTRAINT company_id IF NOT EXISTS FOR (c:Company) REQUIRE c.id IS UNIQUE",

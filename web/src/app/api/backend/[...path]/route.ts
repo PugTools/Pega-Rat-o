@@ -38,12 +38,25 @@ async function proxyToBackend(request: Request, context: RouteContext) {
     headers.set("authorization", DEFAULT_AUTH_HEADER);
   }
 
-  const response = await fetch(targetUrl.toString(), {
-    method: request.method,
-    headers,
-    body: hasRequestBody(request.method) ? await request.arrayBuffer() : undefined,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(targetUrl.toString(), {
+      method: request.method,
+      headers,
+      body: hasRequestBody(request.method) ? await request.arrayBuffer() : undefined,
+      cache: "no-store",
+    });
+  } catch (error) {
+    return Response.json(
+      {
+        detail:
+          "A API do ONGP ainda nao respondeu. Aguarde alguns segundos e tente novamente.",
+        technical_details: serializeProxyError(error),
+        target: targetUrl.toString(),
+      },
+      { status: 503 },
+    );
+  }
 
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("content-encoding");
@@ -91,4 +104,16 @@ function forwardedHeaders(source: Headers) {
 
 function hasRequestBody(method: string) {
   return !["GET", "HEAD"].includes(method.toUpperCase());
+}
+
+function serializeProxyError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return { error };
 }

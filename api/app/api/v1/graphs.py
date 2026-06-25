@@ -20,7 +20,7 @@ def get_entity_graph(
             entity_id=entity_id,
             depth=depth,
         )
-    except RuntimeError as exc:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),

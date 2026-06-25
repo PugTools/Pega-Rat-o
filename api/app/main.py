@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -21,6 +23,9 @@ from app.db import models
 from app.db.database import engine
 from app.db.schema_maintenance import ensure_postgres_runtime_schema
 from app.modules.graphs.sync_service import GraphSyncService
+
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="ONGP - PEGA RATAO API",
@@ -65,8 +70,8 @@ def on_startup() -> None:
     ensure_postgres_runtime_schema(engine)
     try:
         GraphSyncService().ensure_constraints()
-    except RuntimeError:
-        pass
+    except Exception as exc:
+        logger.warning("neo4j_startup_constraints_skipped: %s", exc)
 
 
 @app.get("/")

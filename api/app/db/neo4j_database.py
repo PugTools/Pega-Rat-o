@@ -40,7 +40,7 @@ class Neo4jConnection:
         try:
             self.driver.verify_connectivity()
             return True
-        except (Neo4jError, ServiceUnavailable, OSError) as exc:
+        except (Neo4jError, ServiceUnavailable, OSError, ValueError) as exc:
             logger.warning("neo4j_connectivity_failed: %s", exc)
             return False
 
@@ -54,7 +54,7 @@ class Neo4jConnection:
             with self.driver.session(database=self.database) as session:
                 runner = session.execute_write if write else session.execute_read
                 return runner(self._run_query, cypher, parameters or {})
-        except (Neo4jError, ServiceUnavailable, OSError) as exc:
+        except (Neo4jError, ServiceUnavailable, OSError, ValueError) as exc:
             logger.exception("neo4j_query_failed")
             raise RuntimeError(f"Neo4j query failed: {exc}") from exc
 
