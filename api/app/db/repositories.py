@@ -1,4 +1,5 @@
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -12,6 +13,7 @@ from app.db.models import (
     Organization,
     Person,
     PublicRole,
+    RawDocument,
     RiskAlert as RiskAlertModel,
 )
 from app.modules.alerts.risk_rules import RiskAlert
@@ -163,14 +165,15 @@ def upsert_contract(db: Session, payload: ContractCreate) -> Contract:
 
 
 def create_expense(db: Session, payload: ExpenseCreate) -> Expense:
-    expense = Expense(**payload.model_dump())
+    data = _prepare_expense_data(db, payload)
+    expense = Expense(**data)
     db.add(expense)
     db.flush()
     return expense
 
 
 def upsert_expense(db: Session, payload: ExpenseCreate) -> Expense:
-    data = payload.model_dump()
+    data = _prepare_expense_data(db, payload)
     expense = _find_existing_expense(db, data)
 
     if expense is None:
@@ -181,6 +184,39 @@ def upsert_expense(db: Session, payload: ExpenseCreate) -> Expense:
 
     db.flush()
     return expense
+
+
+def upsert_raw_document(
+    db: Session,
+    document_url: str,
+    source_id: UUID | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> RawDocument:
+    document_hash = sha256(document_url.encode("utf-8")).hexdigest()
+    raw_document = db.scalar(
+        select(RawDocument).where(RawDocument.sha256 == document_hash)
+    )
+    payload = {
+        "source_id": source_id,
+        "original_url": document_url,
+        "storage_uri": document_url,
+        "mime_type": None,
+        "sha256": document_hash,
+        "metadata_json": {
+            "official_url": document_url,
+            "document_url": document_url,
+            **(metadata or {}),
+        },
+    }
+
+    if raw_document is None:
+        raw_document = RawDocument(**payload)
+        db.add(raw_document)
+    else:
+        _apply_updates(raw_document, payload)
+
+    db.flush()
+    return raw_document
 
 
 def save_alerts(
@@ -291,6 +327,28 @@ def _find_existing_expense(db: Session, data: dict) -> Expense | None:
         return db.scalar(query)
 
     return None
+
+
+def _prepare_expense_data(db: Session, payload: ExpenseCreate) -> dict[str, Any]:
+    data = payload.model_dump()
+    data.pop("supplier_payload", None)
+    data.pop("document_url", None)
+
+    supplier_payload = getattr(payload, "supplier_payload", None)
+    if supplier_payload is not None and not data.get("company_id"):
+        company = upsert_company(db, supplier_payload)
+        data["company_id"] = company.id
+
+    document_url = getattr(payload, "document_url", None)
+    if document_url and not data.get("raw_document_id"):
+        raw_document = upsert_raw_document(
+            db,
+            document_url=document_url,
+            source_id=data.get("source_id"),
+        )
+        data["raw_document_id"] = raw_document.id
+
+    return data
 
 
 def _apply_updates(instance: object, data: dict) -> None:

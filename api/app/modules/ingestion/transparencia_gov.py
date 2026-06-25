@@ -110,7 +110,35 @@ class PortalTransparenciaClient(BaseIngestionClient):
             or item.get("dataPagamento")
             or item.get("dataEmissao")
         )
+        supplier_name = self._text(
+            self._nested_value(item, "fornecedor", "nome")
+            or self._nested_value(item, "fornecedor", "nomeRazaoSocial")
+            or self._nested_value(item, "favorecido", "nome")
+            or self._nested_value(item, "favorecido", "nomeFavorecido")
+            or item.get("nomeFornecedor")
+            or item.get("fornecedor")
+            or item.get("favorecido")
+        )
+        supplier_cnpj = self._company_cnpj(
+            self._nested_value(item, "fornecedor", "cnpj")
+            or self._nested_value(item, "fornecedor", "cpfCnpj")
+            or self._nested_value(item, "favorecido", "cnpj")
+            or self._nested_value(item, "favorecido", "cpfCnpj")
+            or item.get("cnpjFornecedor")
+            or item.get("cpfCnpjFornecedor")
+            or item.get("cnpjCpfFornecedor")
+        )
+        document_url = self._text(
+            item.get("urlDocumento")
+            or item.get("urlNotaFiscal")
+            or item.get("linkDocumento")
+            or item.get("documentoUrl")
+            or item.get("url")
+        )
 
+        # Mapeamento federal: CNPJ_FORNECEDOR -> supplier_payload.cnpj,
+        # NOME_FORNECEDOR -> supplier_payload.legal_name, NUMERO_DOCUMENTO ->
+        # commitment_number, URL_DOCUMENTO -> document_url/raw_documents.
         return ExpenseCreate(
             amount=amount,
             expense_date=expense_date or date.today(),
@@ -118,7 +146,10 @@ class PortalTransparenciaClient(BaseIngestionClient):
             expense_type=self._text(item.get("tipo") or item.get("fase")),
             description=self._text(self._expense_description(item)),
             commitment_number=self._text(
-                item.get("numeroEmpenho") or item.get("documentoResumido")
+                item.get("numeroEmpenho")
+                or item.get("numeroDocumento")
+                or item.get("numDocumento")
+                or item.get("documentoResumido")
             ),
             payment_number=self._text(item.get("numeroPagamento")),
             state_code=self._text(
@@ -130,6 +161,14 @@ class PortalTransparenciaClient(BaseIngestionClient):
             municipality_code=self._text(
                 item.get("codigoMunicipio") or item.get("municipio")
             ),
+            supplier_payload=CompanyCreate(
+                legal_name=supplier_name or "Fornecedor sem nome",
+                cnpj=supplier_cnpj,
+                registration_status="ativo",
+            )
+            if supplier_cnpj
+            else None,
+            document_url=document_url,
         )
 
     def transform_contract(self, item: dict[str, Any]) -> ContractCreate:
@@ -272,6 +311,10 @@ class PortalTransparenciaClient(BaseIngestionClient):
             return None
         digits = "".join(char for char in text_value if char.isdigit())
         return digits or None
+
+    def _company_cnpj(self, value: Any) -> str | None:
+        digits = self._digits(value)
+        return digits if digits and len(digits) == 14 else None
 
     def _normalize_name(self, value: str) -> str:
         return " ".join(value.lower().split())

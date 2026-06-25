@@ -114,6 +114,10 @@ export type Expense = {
   municipality_code?: string | null;
   source_id?: string | null;
   raw_document_id?: string | null;
+  supplier_company_id?: string | null;
+  supplier_name?: string | null;
+  supplier_cnpj?: string | null;
+  document_url?: string | null;
   created_at?: string;
 };
 
@@ -292,6 +296,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listCompanies: (limit = 50) => request<Company[]>(`/companies?limit=${limit}`),
+  getCompany: (id: string) => request<Company>(`/companies/${id}`),
   listPersons: async (params: number | ListPersonsParams = 50) => {
     const resolvedParams =
       typeof params === "number" ? { limit: params } : { limit: 50, ...params };

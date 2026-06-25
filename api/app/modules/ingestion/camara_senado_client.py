@@ -10,7 +10,7 @@ from app.modules.ingestion.salary_reference import (
     SALARY_REFERENCE_YEAR,
     annual_salary_for_role,
 )
-from app.schemas.core_schemas import ExpenseCreate, PersonCreate
+from app.schemas.core_schemas import CompanyCreate, ExpenseCreate, PersonCreate
 
 
 logger = logging.getLogger(__name__)
@@ -127,14 +127,28 @@ class CamaraDadosAbertosClient(BaseIngestionClient):
 
     def transform_expense(self, item: dict[str, Any]) -> ExpenseCreate:
         expense_date = self._date(item.get("dataDocumento")) or date.today()
+        supplier_name = self._text(item.get("nomeFornecedor"))
+        supplier_cnpj = _company_cnpj(item.get("cnpjCpfFornecedor"))
+        document_url = self._text(item.get("urlDocumento"))
+        document_number = self._text(item.get("codDocumento") or item.get("numDocumento"))
+
+        # Mapeamento federal: CNPJ_FORNECEDOR -> supplier_payload.cnpj,
+        # NOME_FORNECEDOR -> supplier_payload.legal_name, NUMERO_DOCUMENTO ->
+        # commitment_number, URL_DOCUMENTO -> document_url/raw_documents.
         return ExpenseCreate(
             expense_type=self._text(item.get("tipoDespesa")),
-            description=self._text(item.get("nomeFornecedor")),
+            description=self._text(
+                item.get("tipoDocumento")
+                or item.get("nomeFornecedor")
+                or item.get("tipoDespesa")
+            ),
             amount=self._decimal(item.get("valorLiquido") or item.get("valorDocumento")),
             expense_date=expense_date,
             fiscal_year=expense_date.year,
-            commitment_number=self._text(item.get("codDocumento") or item.get("numDocumento")),
+            commitment_number=document_number,
             payment_number=self._text(item.get("numRessarcimento")),
+            supplier_payload=_supplier_payload(supplier_name, supplier_cnpj),
+            document_url=document_url,
         )
 
     def _items(self, payload: Any) -> list[dict[str, Any]]:
@@ -177,6 +191,23 @@ class CamaraDadosAbertosClient(BaseIngestionClient):
 
 def _normalize_name(value: str) -> str:
     return " ".join(value.lower().split())
+
+
+def _company_cnpj(value: Any) -> str | None:
+    if value is None:
+        return None
+    digits = "".join(char for char in str(value) if char.isdigit())
+    return digits if len(digits) == 14 else None
+
+
+def _supplier_payload(name: str | None, cnpj: str | None) -> CompanyCreate | None:
+    if not cnpj:
+        return None
+    return CompanyCreate(
+        legal_name=name or "Fornecedor sem nome",
+        cnpj=cnpj,
+        registration_status="ativo",
+    )
 
 
 class SenadoDadosAbertosClient(BaseIngestionClient):
@@ -267,13 +298,36 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
 
     def transform_expense(self, item: dict[str, Any]) -> ExpenseCreate:
         expense_date = self._date(item.get("data")) or date.today()
+        supplier_name = self._text(
+            item.get("fornecedor")
+            or item.get("Fornecedor")
+            or item.get("nomeFornecedor")
+        )
+        supplier_cnpj = _company_cnpj(
+            item.get("cnpjCpfFornecedor")
+            or item.get("cpfCnpjFornecedor")
+            or item.get("cnpjFornecedor")
+        )
+        document_number = self._text(
+            item.get("id")
+            or item.get("documento")
+            or item.get("numDocumento")
+        )
+        document_url = self._text(
+            item.get("urlDocumento")
+            or item.get("URLDocumento")
+            or item.get("url")
+        )
+
+        # Mapeamento federal: CNPJ_FORNECEDOR -> supplier_payload.cnpj,
+        # NOME_FORNECEDOR -> supplier_payload.legal_name, NUMERO_DOCUMENTO ->
+        # commitment_number, URL_DOCUMENTO -> document_url/raw_documents.
         return ExpenseCreate(
             expense_type=self._text(item.get("tipoDespesa") or item.get("TipoDespesa") or "CEAPS"),
             description=self._text(
-                item.get("fornecedor")
-                or item.get("Fornecedor")
-                or item.get("detalhamento")
+                item.get("detalhamento")
                 or item.get("tipoDocumento")
+                or supplier_name
             ),
             amount=self._decimal(
                 item.get("valorReembolsado")
@@ -282,8 +336,10 @@ class SenadoDadosAbertosClient(BaseIngestionClient):
             ),
             expense_date=expense_date,
             fiscal_year=expense_date.year,
-            commitment_number=self._text(item.get("id")),
+            commitment_number=document_number,
             payment_number=self._text(item.get("documento")),
+            supplier_payload=_supplier_payload(supplier_name, supplier_cnpj),
+            document_url=document_url,
         )
 
     def _items(self, payload: Any) -> list[dict[str, Any]]:

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.cache import get_json_cache, set_json_cache
 from app.db.database import get_db
-from app.db.models import Expense, Person, PublicRole
+from app.db.models import Company, Expense, Person, PublicRole, RawDocument
 from app.schemas.core_schemas import ExpenseResponse, PersonDetailResponse, PersonResponse
 
 
@@ -95,19 +95,86 @@ def get_person(person_id: UUID, db: Session = Depends(get_db)) -> dict:
         )
 
     payload = PersonResponse.model_validate(person).model_dump(mode="json")
-    expenses = (
-        db.query(Expense)
-        .filter(Expense.person_id == person_id)
-        .order_by(Expense.expense_date.desc(), Expense.created_at.desc())
-        .limit(25)
-        .all()
-    )
-    payload["recent_expenses"] = [
-        ExpenseResponse.model_validate(expense).model_dump(mode="json")
-        for expense in expenses
-    ]
+    expense_rows = _query_person_expense_rows(db, person_id=person_id, limit=25)
+    payload["recent_expenses"] = [_expense_payload(*row) for row in expense_rows]
     payload["expense_total"] = str(
-        sum((expense.amount or 0) for expense in expenses)
+        sum((expense.amount or 0) for expense, _, _ in expense_rows)
     )
     set_json_cache(cache_key, payload, ttl_seconds=300)
     return payload
+
+
+@router.get("/{person_id}/expenses", response_model=list[ExpenseResponse])
+def list_person_expenses(
+    person_id: UUID,
+    db: Session = Depends(get_db),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[dict]:
+    cache_key = f"persons:expenses:{person_id}:{skip}:{limit}"
+    cached = get_json_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    person_exists = db.query(Person.id).filter(Person.id == person_id).one_or_none()
+    if person_exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Person not found.",
+        )
+
+    rows = _query_person_expense_rows(
+        db,
+        person_id=person_id,
+        skip=skip,
+        limit=limit,
+    )
+    payload = [_expense_payload(*row) for row in rows]
+    set_json_cache(cache_key, payload, ttl_seconds=300)
+    return payload
+
+
+def _query_person_expense_rows(
+    db: Session,
+    person_id: UUID,
+    skip: int = 0,
+    limit: int = 25,
+) -> list[tuple[Expense, Company | None, RawDocument | None]]:
+    return (
+        db.query(Expense, Company, RawDocument)
+        .outerjoin(Company, Expense.company_id == Company.id)
+        .outerjoin(RawDocument, Expense.raw_document_id == RawDocument.id)
+        .filter(Expense.person_id == person_id)
+        .order_by(Expense.expense_date.desc(), Expense.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
+def _expense_payload(
+    expense: Expense,
+    supplier: Company | None,
+    raw_document: RawDocument | None,
+) -> dict:
+    payload = ExpenseResponse.model_validate(expense).model_dump(mode="json")
+    payload["supplier_company_id"] = str(supplier.id) if supplier else (
+        str(expense.company_id) if expense.company_id else None
+    )
+    payload["supplier_name"] = supplier.legal_name if supplier else None
+    payload["supplier_cnpj"] = supplier.cnpj if supplier else None
+    payload["document_url"] = _document_url(raw_document)
+    return payload
+
+
+def _document_url(raw_document: RawDocument | None) -> str | None:
+    if raw_document is None:
+        return None
+
+    metadata = raw_document.metadata_json or {}
+    for key in ("document_url", "official_url", "url", "source_url"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return raw_document.original_url or raw_document.storage_uri

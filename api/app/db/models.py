@@ -31,6 +31,30 @@ class Source(Base):
     contracts: Mapped[list["Contract"]] = relationship(back_populates="source")
     expenses: Mapped[list["Expense"]] = relationship(back_populates="source")
     public_roles: Mapped[list["PublicRole"]] = relationship(back_populates="source")
+    raw_documents: Mapped[list["RawDocument"]] = relationship(back_populates="source")
+
+
+class RawDocument(Base):
+    __tablename__ = "raw_documents"
+    __table_args__ = (Index("idx_raw_documents_sha256", "sha256"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sources.id")
+    )
+    ingestion_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    original_url: Mapped[str | None] = mapped_column(Text)
+    storage_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    mime_type: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    source: Mapped["Source | None"] = relationship(back_populates="raw_documents")
 
 
 class Person(Base):

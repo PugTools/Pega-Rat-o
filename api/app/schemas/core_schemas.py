@@ -192,12 +192,17 @@ class ExpenseBase(BaseModel):
 
 
 class ExpenseCreate(ExpenseBase):
-    pass
+    supplier_payload: CompanyCreate | None = Field(default=None, exclude=True)
+    document_url: str | None = Field(default=None, exclude=True)
 
 
 class ExpenseResponse(ExpenseBase, ORMModel):
     id: UUID
     created_at: datetime
+    supplier_company_id: UUID | None = None
+    supplier_name: str | None = None
+    supplier_cnpj: str | None = None
+    document_url: str | None = None
 
 
 class PersonDetailResponse(PersonResponse):
