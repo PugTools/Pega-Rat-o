@@ -136,6 +136,7 @@ def trigger_political_ingestion(
     limite_tse_por_cargo: int = Query(default=50, ge=0),
     uf_tse: str | None = Query(default=None, min_length=2, max_length=2),
     patrimonio_tse: bool = Query(default=True),
+    sync_graph: bool = Query(default=False),
     sync: bool = Query(default=False),
 ) -> dict[str, Any]:
     parsed_tse_years = _parse_tse_years(anos_tse)
@@ -155,6 +156,7 @@ def trigger_political_ingestion(
             limite_tse_por_cargo=limite_tse_por_cargo,
             uf_tse=uf_tse,
             patrimonio_tse=patrimonio_tse,
+            sync_graph=sync_graph,
         )
 
     task = task_run_political_ingestion.delay(
@@ -170,11 +172,12 @@ def trigger_political_ingestion(
         limite_tse_por_cargo=limite_tse_por_cargo,
         uf_tse=uf_tse,
         patrimonio_tse=patrimonio_tse,
+        sync_graph=sync_graph,
     )
     _record_admin_task_submission(
         task_id=task.id,
         job="political_ingestion",
-        title="Sincronizacao Camara/Senado",
+        title="Sincronizacao politica nacional",
         requested_by=current_user["email"],
     )
     return {
@@ -195,6 +198,7 @@ def trigger_political_ingestion(
             "limite_tse_por_cargo": limite_tse_por_cargo,
             "uf_tse": uf_tse,
             "patrimonio_tse": patrimonio_tse,
+            "sync_graph": sync_graph,
             "sync": sync,
         },
     }
@@ -215,12 +219,13 @@ def _run_political_ingestion_now(
     limite_tse_por_cargo: int,
     uf_tse: str | None,
     patrimonio_tse: bool,
+    sync_graph: bool,
 ) -> dict[str, Any]:
     task_id = f"sync-political-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
     _record_admin_task_submission(
         task_id=task_id,
         job="political_ingestion",
-        title="Sincronizacao Camara/Senado",
+        title="Sincronizacao politica nacional",
         requested_by=requested_by,
     )
 
@@ -239,14 +244,14 @@ def _run_political_ingestion_now(
             limite_tse_por_cargo=limite_tse_por_cargo,
             uf_tse=uf_tse,
             patrimonio_tse=patrimonio_tse,
-            sync_graph=False,
+            sync_graph=sync_graph,
         )
     except Exception as exc:
         error_payload = {"exception": repr(exc)}
         _record_admin_task_result(
             task_id=task_id,
             job="political_ingestion",
-            title="Sincronizacao Camara/Senado",
+            title="Sincronizacao politica nacional",
             requested_by=requested_by,
             status_value="FAILURE",
             result=error_payload,
@@ -263,7 +268,7 @@ def _run_political_ingestion_now(
     _record_admin_task_result(
         task_id=task_id,
         job="political_ingestion",
-        title="Sincronizacao Camara/Senado",
+        title="Sincronizacao politica nacional",
         requested_by=requested_by,
         status_value="SUCCESS",
         result=payload,

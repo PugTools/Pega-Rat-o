@@ -220,6 +220,8 @@ def _format_metadata_log(task_id: str, metadata: dict[str, Any]) -> dict[str, An
         or datetime.now(timezone.utc).isoformat()
     )
     status = _normalized_status(raw_status)
+    if status == "success" and _result_has_warnings(result):
+        status = "warning"
 
     return {
         "id": task_id,
@@ -245,11 +247,15 @@ def _normalized_status(raw_status: str) -> str:
     return "success"
 
 
+def _result_has_warnings(result: Any) -> bool:
+    return isinstance(result, dict) and bool(result.get("errors"))
+
+
 def _friendly_title(result: Any, raw_status: str) -> str:
     if isinstance(result, dict):
         job = result.get("job")
         if job == "political_ingestion":
-            return "Sincronizacao Camara/Senado"
+            return "Sincronizacao politica nacional"
         if job == "daily_ingestion":
             return "Ingestao Portal da Transparencia"
         if "politicians_found" in result:
@@ -276,12 +282,21 @@ def _friendly_message(result: Any, raw_status: str, status: str) -> str:
         found = result.get("politicians_found")
         expenses = result.get("expenses_saved")
         if politicians is not None:
+            counts = result.get("source_counts") or {}
+            source_text = ""
+            if isinstance(counts, dict) and counts:
+                source_text = (
+                    f" Fontes: Camara {counts.get('dados-abertos-camara', 0)}, "
+                    f"Senado {counts.get('dados-abertos-senado', 0)}, "
+                    f"TSE 2024 {counts.get('dados-abertos-tse-2024', 0)}, "
+                    f"TSE 2022 {counts.get('dados-abertos-tse-2022', 0)}."
+                )
             base = f"{politicians} de {found or politicians} politicos ativos salvos"
             if expenses is not None:
                 base = f"{base}; {expenses} despesas processadas"
             if errors:
-                return f"{base}. A coleta terminou com {len(errors)} aviso(s)."
-            return f"{base}. Coleta concluida."
+                return f"{base}.{source_text} A coleta terminou com {len(errors)} aviso(s)."
+            return f"{base}.{source_text} Coleta concluida."
 
         contracts = result.get("contracts_saved")
         if contracts is not None:

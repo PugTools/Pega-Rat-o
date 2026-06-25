@@ -60,6 +60,7 @@ def task_run_political_ingestion(
     limite_tse_por_cargo: int = 50,
     uf_tse: str | None = None,
     patrimonio_tse: bool = True,
+    sync_graph: bool = False,
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
@@ -77,6 +78,7 @@ def task_run_political_ingestion(
             limite_tse_por_cargo=limite_tse_por_cargo,
             uf_tse=uf_tse,
             patrimonio_tse=patrimonio_tse,
+            sync_graph=sync_graph,
         )
         return {"job": "political_ingestion", **result.to_dict()}
     finally:

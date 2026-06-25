@@ -73,7 +73,6 @@ class TseDadosAbertosClient:
                         record = self.transform_candidate(
                             row,
                             year=year,
-                            asset_totals=asset_totals,
                         )
                         if record is None:
                             continue

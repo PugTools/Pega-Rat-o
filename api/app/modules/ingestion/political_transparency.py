@@ -83,7 +83,7 @@ class PoliticalTransparencyIngestion:
         limite_tse_por_cargo: int = 50,
         uf_tse: str | None = None,
         patrimonio_tse: bool = True,
-        sync_graph: bool = True,
+        sync_graph: bool = False,
     ) -> PoliticalIngestionResult:
         expense_year = ano or date.today().year
         errors: list[str] = []
@@ -102,6 +102,9 @@ class PoliticalTransparencyIngestion:
             errors=errors,
             source_counts=source_counts,
         )
+
+        if sync_graph and not self._graph_is_available(errors):
+            sync_graph = False
 
         if not politicians and errors:
             return PoliticalIngestionResult(
@@ -380,6 +383,19 @@ class PoliticalTransparencyIngestion:
         except Exception as exc:
             logger.exception("politician_graph_sync_failed")
             errors.append(f"politician_graph_sync_failed:{person.id}: {exc}")
+
+    def _graph_is_available(self, errors: list[str]) -> bool:
+        try:
+            if self.graph_sync_service.connection.verify():
+                return True
+        except Exception as exc:
+            errors.append(f"politician_graph_sync_unavailable: {exc}")
+            logger.warning("politician_graph_sync_unavailable: %s", exc)
+            return False
+
+        errors.append("politician_graph_sync_skipped: Neo4j indisponivel.")
+        logger.warning("politician_graph_sync_skipped: Neo4j indisponivel.")
+        return False
 
     def _generate_asset_alerts(
         self,

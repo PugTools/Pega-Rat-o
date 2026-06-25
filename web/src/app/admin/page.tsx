@@ -22,7 +22,7 @@ const AUTH_HEADER = "Bearer mock-token-ongp";
 
 type AdminLog = {
   id: string;
-  status: "success" | "error" | "running" | string;
+  status: "success" | "warning" | "error" | "running" | string;
   title: string;
   message: string;
   technical_details: unknown;
@@ -102,7 +102,7 @@ export default function AdminPage() {
     [logs],
   );
   const recentErrors = useMemo(
-    () => logs.filter((log) => log.status === "error").length,
+    () => logs.filter((log) => log.status === "error" || log.status === "warning").length,
     [logs],
   );
 
@@ -334,7 +334,7 @@ function OperationalHud({
       <StatusCard
         icon={recentErrors > 0 ? AlertCircle : CheckCircle2}
         label="Fila e logs"
-        message={`${activeTasks} tarefa(s) em execucao; ${recentErrors} erro(s) recente(s).`}
+        message={`${activeTasks} tarefa(s) em execucao; ${recentErrors} aviso(s)/erro(s) recente(s).`}
         status={recentErrors > 0 ? "degraded" : activeTasks > 0 ? "checking" : "online"}
         value={activeTasks > 0 ? `${activeTasks} ativa(s)` : "Estavel"}
       />
@@ -561,6 +561,8 @@ function LogRow({
           <div className={`mt-0.5 rounded-md p-2 ${tone.icon}`}>
             {log.status === "error" ? (
               <AlertCircle className="h-5 w-5" />
+            ) : log.status === "warning" ? (
+              <AlertCircle className="h-5 w-5" />
             ) : isRunning ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
@@ -667,11 +669,11 @@ async function parseResponseBody(response: Response) {
 
 function ingestionPath(action: ActionKey) {
   if (action === "politicians") {
-    return "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=5&incluir_senado=true&despesas_senado=false&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50&patrimonio_tse=false";
+    return "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=5&incluir_senado=true&despesas_senado=false&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50&patrimonio_tse=false&sync_graph=false";
   }
 
   if (action === "politiciansFull") {
-    return "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=20&incluir_senado=true&despesas_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=0&patrimonio_tse=true";
+    return "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=20&incluir_senado=true&despesas_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=0&patrimonio_tse=true&sync_graph=false";
   }
 
   return "/ingestion/run";
@@ -812,6 +814,7 @@ function connectionLabel(status: ConnectionState["status"]) {
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     success: "Sucesso",
+    warning: "Com avisos",
     error: "Erro",
     running: "Em execucao",
   };
@@ -856,6 +859,12 @@ function logTone(status: string) {
     };
   }
   if (status === "running") {
+    return {
+      badge: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+      icon: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+    };
+  }
+  if (status === "warning") {
     return {
       badge: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
       icon: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-200",

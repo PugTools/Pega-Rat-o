@@ -369,6 +369,7 @@ export const api = {
     tseLimitPerRole?: number;
     tseStateCode?: string;
     tseAssets?: boolean;
+    syncGraph?: boolean;
   } = {}) => {
     const searchParams = new URLSearchParams({
       itens: String(params.limit ?? 100),
@@ -381,6 +382,7 @@ export const api = {
       anos_tse: params.tseYears ?? "2024,2022",
       limite_tse_por_cargo: String(params.tseLimitPerRole ?? 50),
       patrimonio_tse: String(params.tseAssets ?? false),
+      sync_graph: String(params.syncGraph ?? false),
     });
     if (params.year) {
       searchParams.set("ano", String(params.year));
