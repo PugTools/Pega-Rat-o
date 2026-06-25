@@ -5,13 +5,42 @@ from typing import Any
 import redis
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.cache import redis_client
 from app.core.celery_app import celery_app
+from app.db.database import engine
 from app.modules.auth.auth_service import get_current_user
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/system-health")
+def get_system_health(current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+    services = [
+        _api_health(),
+        _postgres_health(),
+        _redis_health(),
+        _celery_health(),
+    ]
+    has_error = any(service["status"] == "error" for service in services)
+    has_warning = any(service["status"] == "warning" for service in services)
+
+    if has_error:
+        status_value = "error"
+    elif has_warning:
+        status_value = "degraded"
+    else:
+        status_value = "success"
+
+    return {
+        "status": status_value,
+        "requested_by": current_user["email"],
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "services": services,
+    }
 
 
 @router.get("/system-logs")
@@ -40,6 +69,81 @@ def get_system_logs(
         "status": "success",
         "requested_by": current_user["email"],
         "logs": logs,
+    }
+
+
+def _api_health() -> dict[str, Any]:
+    return {
+        "name": "api",
+        "status": "ok",
+        "message": "FastAPI online e respondendo.",
+        "technical_details": {"component": "fastapi"},
+    }
+
+
+def _postgres_health() -> dict[str, Any]:
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        return {
+            "name": "postgres",
+            "status": "error",
+            "message": "PostgreSQL indisponivel para consultas.",
+            "technical_details": {"exception": repr(exc)},
+        }
+
+    return {
+        "name": "postgres",
+        "status": "ok",
+        "message": "Banco PostgreSQL conectado.",
+        "technical_details": {"component": "postgres"},
+    }
+
+
+def _redis_health() -> dict[str, Any]:
+    try:
+        redis_client.ping()
+    except redis.RedisError as exc:
+        return {
+            "name": "redis",
+            "status": "error",
+            "message": "Redis indisponivel. Fila, cache e logs podem falhar.",
+            "technical_details": {"exception": repr(exc)},
+        }
+
+    return {
+        "name": "redis",
+        "status": "ok",
+        "message": "Redis conectado para fila, cache e logs.",
+        "technical_details": {"component": "redis"},
+    }
+
+
+def _celery_health() -> dict[str, Any]:
+    try:
+        response = celery_app.control.inspect(timeout=1.0).ping()
+    except Exception as exc:
+        return {
+            "name": "celery",
+            "status": "error",
+            "message": "Nao foi possivel consultar o worker Celery.",
+            "technical_details": {"exception": repr(exc)},
+        }
+
+    if not response:
+        return {
+            "name": "celery",
+            "status": "warning",
+            "message": "Nenhum worker Celery respondeu ao ping. Tarefas podem ficar aguardando.",
+            "technical_details": {"ping": response},
+        }
+
+    return {
+        "name": "celery",
+        "status": "ok",
+        "message": f"{len(response)} worker(s) Celery respondendo.",
+        "technical_details": {"ping": response},
     }
 
 

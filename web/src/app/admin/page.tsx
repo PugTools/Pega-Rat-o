@@ -1,13 +1,20 @@
 "use client";
 
 import {
+  Activity,
   AlertCircle,
   CheckCircle2,
+  Clock3,
+  Database,
   Loader2,
   Play,
   RefreshCw,
+  Server,
   Terminal,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE_URL = "/api/backend";
@@ -22,9 +29,24 @@ type AdminLog = {
   created_at: string;
 };
 
-type Toast = {
-  type: "success" | "error";
+type HealthService = {
+  name: string;
+  status: "ok" | "warning" | "error" | string;
   message: string;
+  technical_details?: unknown;
+};
+
+type SystemHealth = {
+  status: "success" | "degraded" | "error" | string;
+  checked_at: string;
+  services: HealthService[];
+};
+
+type ConnectionState = {
+  status: "checking" | "online" | "degraded" | "offline";
+  message: string;
+  checkedAt?: string;
+  technicalDetails?: unknown;
 };
 
 type ActionKey = "politicians" | "politiciansFull" | "daily";
@@ -43,165 +65,227 @@ type AdminActionResponse = {
   errors?: string[];
 };
 
+class ApiRequestError extends Error {
+  status?: number;
+  payload?: unknown;
+
+  constructor(message: string, status?: number, payload?: unknown) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 export default function AdminPage() {
+  const [health, setHealth] = useState<SystemHealth | null>(null);
   const [logs, setLogs] = useState<AdminLog[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(true);
+  const [connection, setConnection] = useState<ConnectionState>({
+    status: "checking",
+    message: "Verificando conexao com a API...",
+  });
+  const [loading, setLoading] = useState(true);
+  const [pollingEnabled, setPollingEnabled] = useState(true);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<ActionKey | null>(null);
-  const [toast, setToast] = useState<Toast | null>(null);
   const [lastResult, setLastResult] = useState<AdminActionResponse | null>(null);
+  const [lastActionError, setLastActionError] = useState<unknown>(null);
 
-  const systemSummary = useMemo(() => {
-    const errors = logs.filter((log) => log.status === "error").length;
-    return {
-      errors,
-      healthy: errors === 0,
-    };
-  }, [logs]);
+  const servicesByName = useMemo(() => {
+    const entries: Array<[string, HealthService]> =
+      health?.services.map((service) => [service.name, service]) ?? [];
+    return Object.fromEntries(entries) as Record<string, HealthService | undefined>;
+  }, [health]);
 
-  const loadLogs = useCallback(async () => {
-    setLoadingLogs(true);
+  const activeTasks = useMemo(
+    () => logs.filter((log) => log.status === "running").length,
+    [logs],
+  );
+  const recentErrors = useMemo(
+    () => logs.filter((log) => log.status === "error").length,
+    [logs],
+  );
+
+  const refreshAll = useCallback(async () => {
+    setLoading(true);
+    setConnection((current) => ({
+      ...current,
+      status: current.status === "offline" ? "checking" : current.status,
+      message:
+        current.status === "offline"
+          ? "Tentando reconectar com a API..."
+          : current.message,
+    }));
+
     try {
-      const payload = await adminRequest<{ logs: AdminLog[] }>("/admin/system-logs");
-      setLogs(payload.logs ?? []);
+      const healthPayload = await adminRequest<SystemHealth>(
+        "/admin/system-health",
+        undefined,
+        8000,
+      );
+      setHealth(healthPayload);
+      setConnection(connectionFromHealth(healthPayload));
     } catch (error) {
-      setLogs([
-        {
-          id: "frontend-log-fetch-error",
-          status: "error",
-          title: "Falha ao carregar logs",
-          message: "A interface nao conseguiu consultar a API de administracao.",
-          technical_details: serializeError(error),
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      setHealth(null);
+      setLogs([frontendErrorLog(error)]);
+      setConnection({
+        status: "offline",
+        message: humanErrorMessage(error),
+        checkedAt: new Date().toISOString(),
+        technicalDetails: serializeError(error),
+      });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const logsPayload = await adminRequest<{ logs: AdminLog[] }>(
+        "/admin/system-logs",
+        undefined,
+        10000,
+      );
+      setLogs(logsPayload.logs ?? []);
+    } catch (error) {
+      setLogs([frontendErrorLog(error)]);
+      setConnection((current) => ({
+        ...current,
+        status: current.status === "online" ? "degraded" : current.status,
+        message: `API respondeu, mas os logs falharam: ${humanErrorMessage(error)}`,
+        technicalDetails: serializeError(error),
+      }));
     } finally {
-      setLoadingLogs(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadLogs();
-    const interval = window.setInterval(loadLogs, 15000);
+    refreshAll();
+  }, [refreshAll]);
+
+  useEffect(() => {
+    if (!pollingEnabled) {
+      return;
+    }
+
+    const interval = window.setInterval(refreshAll, 10000);
     return () => window.clearInterval(interval);
-  }, [loadLogs]);
+  }, [pollingEnabled, refreshAll]);
 
   async function runAction(action: ActionKey) {
     setRunningAction(action);
-    setToast(null);
+    setLastActionError(null);
 
     try {
-      const path =
-        action === "politicians"
-          ? "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=5&incluir_senado=true&despesas_senado=false&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50&patrimonio_tse=false"
-          : action === "politiciansFull"
-            ? "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=20&incluir_senado=true&despesas_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=0&patrimonio_tse=true"
-            : "/ingestion/run";
-      const payload = await adminRequest<AdminActionResponse>(path, {
-        method: "POST",
-      });
+      const payload = await adminRequest<AdminActionResponse>(
+        ingestionPath(action),
+        { method: "POST" },
+        15000,
+      );
       setLastResult(payload);
-      setToast({
-        type: "success",
-        message: successMessage(action, payload),
-      });
-      await loadLogs();
-      window.setTimeout(loadLogs, 2500);
+      await refreshAll();
+      window.setTimeout(refreshAll, 2500);
     } catch (error) {
-      setToast({
-        type: "error",
-        message: `Nao foi possivel iniciar a tarefa: ${errorMessage(error)}`,
-      });
+      setLastActionError(error);
+      setLogs((current) => [frontendErrorLog(error, "Falha ao disparar tarefa"), ...current]);
     } finally {
       setRunningAction(null);
     }
   }
 
-  return (
-    <div className="mx-auto max-w-7xl">
-      <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-500">Backoffice operacional</p>
-          <h2 className="mt-1 text-2xl font-semibold text-slate-950">
-            Administracao do Sistema
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Dispare coletas oficiais e acompanhe tarefas, avisos e erros recentes em
-            uma visao amigavel com detalhes tecnicos sob demanda.
-          </p>
-        </div>
-        <div
-          className={`w-fit rounded-md border px-3 py-2 text-xs font-semibold ${
-            systemSummary.healthy
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-red-200 bg-red-50 text-red-800"
-          }`}
-        >
-          {systemSummary.healthy
-            ? "Sistema sem erros recentes"
-            : `${systemSummary.errors} erro(s) recente(s)`}
-        </div>
-      </div>
+  const actionsDisabled = connection.status === "offline" || runningAction !== null;
 
-      {toast ? (
-        <div
-          className={`mb-6 rounded-lg border px-4 py-3 text-sm ${
-            toast.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-red-200 bg-red-50 text-red-800"
-          }`}
-          role="status"
-        >
-          {toast.message}
+  return (
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              Backoffice operacional
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
+              Administracao do Sistema
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Acompanhe se a API esta viva, se o worker esta processando e em qual
+              etapa a ingestao esta. A tela atualiza sozinha, sem deixar tarefa
+              rodando no escuro.
+            </p>
+          </div>
+          <ConnectionBadge connection={connection} loading={loading} />
         </div>
-      ) : null}
+      </header>
+
+      <OperationalHud
+        activeTasks={activeTasks}
+        connection={connection}
+        lastChecked={health?.checked_at ?? connection.checkedAt}
+        recentErrors={recentErrors}
+        servicesByName={servicesByName}
+      />
+
+      {lastActionError ? <ActionError error={lastActionError} /> : null}
+      {lastResult ? <LastResultCard result={lastResult} /> : null}
 
       <section className="grid gap-4 lg:grid-cols-3">
         <ActionCard
           busy={runningAction === "politicians"}
-          description="Envia a coleta oficial para a fila. Os politicos aparecem primeiro; despesas e enriquecimentos continuam em segundo plano."
+          disabled={actionsDisabled}
+          expected="Retorno imediato; coleta em fila."
+          description="Carga rapida para popular a tela de politicos. Salva nomes, cargos, partidos e UF; enriquecimentos continuam no worker."
           onRun={() => runAction("politicians")}
           title="Atualizar politicos ativos"
         />
         <ActionCard
           busy={runningAction === "politiciansFull"}
-          description="Carga pesada em segundo plano com TSE nacional, despesas parlamentares e patrimonio declarado quando disponivel."
+          disabled={actionsDisabled}
+          expected="Pode levar varios minutos."
+          description="Carga pesada com TSE nacional, despesas parlamentares e patrimonio declarado quando a fonte permitir."
           onRun={() => runAction("politiciansFull")}
           title="Carga nacional completa"
         />
         <ActionCard
           busy={runningAction === "daily"}
-          description="Dispara a coleta geral do Portal da Transparencia para contratos e despesas."
+          disabled={actionsDisabled}
+          expected="Depende da CGU/ComprasGov."
+          description="Dispara a coleta geral para contratos e despesas oficiais."
           onRun={() => runAction("daily")}
-          title="Executar Ingestao Geral"
+          title="Executar ingestao geral"
         />
       </section>
 
-      {lastResult ? <LastResultCard result={lastResult} /> : null}
-
-      <section className="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-base font-semibold text-slate-950">
+            <h3 className="text-base font-semibold text-slate-950 dark:text-white">
               Monitor de Logs
             </h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Atualizacao automatica a cada 15 segundos
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Auto-refresh {pollingEnabled ? "ligado" : "pausado"} a cada 10 segundos
             </p>
           </div>
-          <button
-            className="inline-flex w-fit items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={loadingLogs}
-            onClick={loadLogs}
-            type="button"
-          >
-            <RefreshCw className={`h-4 w-4 ${loadingLogs ? "animate-spin" : ""}`} />
-            Recarregar
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              onClick={() => setPollingEnabled((value) => !value)}
+              type="button"
+            >
+              <Clock3 className="h-4 w-4" />
+              {pollingEnabled ? "Pausar" : "Retomar"}
+            </button>
+            <button
+              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              disabled={loading}
+              onClick={refreshAll}
+              type="button"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Recarregar
+            </button>
+          </div>
         </div>
 
-        <div className="divide-y divide-slate-100">
-          {loadingLogs && logs.length === 0 ? (
+        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          {loading && logs.length === 0 ? (
             <LogSkeleton />
           ) : (
             logs.map((log) => (
@@ -221,31 +305,159 @@ export default function AdminPage() {
   );
 }
 
+function OperationalHud({
+  activeTasks,
+  connection,
+  lastChecked,
+  recentErrors,
+  servicesByName,
+}: {
+  activeTasks: number;
+  connection: ConnectionState;
+  lastChecked?: string;
+  recentErrors: number;
+  servicesByName: Record<string, HealthService | undefined>;
+}) {
+  return (
+    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <StatusCard
+        icon={connection.status === "offline" ? WifiOff : Wifi}
+        label="Conexao"
+        message={connection.message}
+        status={connection.status}
+        value={connectionLabel(connection.status)}
+      />
+      <ServiceCard icon={Server} label="API" service={servicesByName.api} />
+      <ServiceCard icon={Database} label="Postgres" service={servicesByName.postgres} />
+      <ServiceCard icon={Database} label="Redis" service={servicesByName.redis} />
+      <ServiceCard icon={Activity} label="Celery" service={servicesByName.celery} />
+      <StatusCard
+        icon={recentErrors > 0 ? AlertCircle : CheckCircle2}
+        label="Fila e logs"
+        message={`${activeTasks} tarefa(s) em execucao; ${recentErrors} erro(s) recente(s).`}
+        status={recentErrors > 0 ? "degraded" : activeTasks > 0 ? "checking" : "online"}
+        value={activeTasks > 0 ? `${activeTasks} ativa(s)` : "Estavel"}
+      />
+      <div className="md:col-span-2 xl:col-span-6">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Ultima verificacao: {lastChecked ? formatDate(lastChecked) : "aguardando"}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function ServiceCard({
+  icon,
+  label,
+  service,
+}: {
+  icon: LucideIcon;
+  label: string;
+  service?: HealthService;
+}) {
+  const status = serviceStatusToConnection(service?.status);
+  return (
+    <StatusCard
+      icon={icon}
+      label={label}
+      message={service?.message ?? "Ainda sem resposta desta camada."}
+      status={status}
+      value={serviceLabel(service?.status)}
+    />
+  );
+}
+
+function StatusCard({
+  icon: Icon,
+  label,
+  message,
+  status,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  message: string;
+  status: ConnectionState["status"];
+  value: string;
+}) {
+  const tone = statusTone(status);
+  return (
+    <article className={`rounded-lg border p-4 shadow-sm ${tone.container}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className={`text-xs font-semibold uppercase tracking-wide ${tone.muted}`}>
+            {label}
+          </p>
+          <p className={`mt-1 text-lg font-semibold ${tone.text}`}>{value}</p>
+        </div>
+        <div className={`rounded-md p-2 ${tone.icon}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className={`mt-3 line-clamp-3 text-xs leading-5 ${tone.muted}`}>{message}</p>
+    </article>
+  );
+}
+
+function ConnectionBadge({
+  connection,
+  loading,
+}: {
+  connection: ConnectionState;
+  loading: boolean;
+}) {
+  const tone = statusTone(connection.status);
+  return (
+    <div className={`inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold ${tone.badge}`}>
+      {loading || connection.status === "checking" ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : connection.status === "offline" ? (
+        <WifiOff className="h-4 w-4" />
+      ) : (
+        <CheckCircle2 className="h-4 w-4" />
+      )}
+      {connectionLabel(connection.status)}
+    </div>
+  );
+}
+
 function ActionCard({
   busy,
   description,
+  disabled,
+  expected,
   onRun,
   title,
 }: {
   busy: boolean;
   description: string;
+  disabled: boolean;
+  expected: string;
   onRun: () => void;
   title: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-base font-semibold text-slate-950">{title}</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+          <h3 className="text-base font-semibold text-slate-950 dark:text-white">
+            {title}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            {description}
+          </p>
+          <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+            {expected}
+          </p>
         </div>
-        <div className="rounded-md bg-slate-100 p-2 text-slate-700">
+        <div className="rounded-md bg-slate-100 p-2 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
           <Play className="h-5 w-5" />
         </div>
       </div>
       <button
-        className="mt-5 inline-flex items-center gap-2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-        disabled={busy}
+        className="mt-5 inline-flex items-center gap-2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+        disabled={disabled || busy}
         onClick={onRun}
         type="button"
       >
@@ -263,20 +475,18 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
   const tse2022Count = result.source_counts?.["dados-abertos-tse-2022"] ?? 0;
 
   return (
-      <section className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+    <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/40">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm font-semibold text-emerald-800">
-            Ultima execucao
+          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+            Ultima acao enviada
           </p>
-          <h3 className="mt-1 text-lg font-semibold text-slate-950">
-            {result.status === "completed"
-              ? result.contracts_saved !== undefined
-                ? "Contratos e despesas sincronizados"
-                : "Politicos ativos sincronizados"
-              : "Tarefa enviada ao processamento"}
+          <h3 className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
+            {result.status === "accepted"
+              ? "Tarefa na fila de processamento"
+              : "Execucao concluida"}
           </h3>
-          <p className="mt-1 text-sm text-emerald-900">
+          <p className="mt-1 text-sm text-emerald-900 dark:text-emerald-200">
             {successMessage(result.contracts_saved !== undefined ? "daily" : "politicians", result)}
           </p>
         </div>
@@ -292,10 +502,15 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
           <ResultMetric label="Avisos" value={result.errors?.length ?? 0} />
         </div>
       </div>
+      {result.task_id ? (
+        <p className="mt-4 text-xs text-emerald-900 dark:text-emerald-200">
+          ID da tarefa: {result.task_id}
+        </p>
+      ) : null}
       {camaraCount || senadoCount || tse2024Count || tse2022Count ? (
-        <p className="mt-4 text-xs text-emerald-900">
-          Fontes: Camara {camaraCount} registro(s), Senado {senadoCount} registro(s),
-          TSE 2024 {tse2024Count} registro(s), TSE 2022 {tse2022Count} registro(s).
+        <p className="mt-2 text-xs text-emerald-900 dark:text-emerald-200">
+          Fontes: Camara {camaraCount}, Senado {senadoCount}, TSE 2024 {tse2024Count},
+          TSE 2022 {tse2022Count}.
         </p>
       ) : null}
     </section>
@@ -304,10 +519,26 @@ function LastResultCard({ result }: { result: AdminActionResponse }) {
 
 function ResultMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md border border-emerald-200 bg-white px-4 py-3 text-center">
-      <p className="text-xl font-semibold text-slate-950">{value}</p>
-      <p className="mt-1 text-xs font-medium text-slate-500">{label}</p>
+    <div className="rounded-md border border-emerald-200 bg-white px-4 py-3 text-center dark:border-emerald-900 dark:bg-slate-950">
+      <p className="text-xl font-semibold text-slate-950 dark:text-white">{value}</p>
+      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+        {label}
+      </p>
     </div>
+  );
+}
+
+function ActionError({ error }: { error: unknown }) {
+  return (
+    <section className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900 shadow-sm dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+      <div className="flex gap-3">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+        <div>
+          <p className="font-semibold">Nao foi possivel disparar a tarefa</p>
+          <p className="mt-1">{humanErrorMessage(error)}</p>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -320,23 +551,15 @@ function LogRow({
   log: AdminLog;
   onToggle: () => void;
 }) {
-  const isError = log.status === "error";
+  const tone = logTone(log.status);
   const isRunning = log.status === "running";
 
   return (
     <article className="px-5 py-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex gap-3">
-          <div
-            className={`mt-0.5 rounded-md p-2 ${
-              isError
-                ? "bg-red-50 text-red-700"
-                : isRunning
-                  ? "bg-amber-50 text-amber-700"
-                  : "bg-emerald-50 text-emerald-700"
-            }`}
-          >
-            {isError ? (
+          <div className={`mt-0.5 rounded-md p-2 ${tone.icon}`}>
+            {log.status === "error" ? (
               <AlertCircle className="h-5 w-5" />
             ) : isRunning ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -346,22 +569,24 @@ function LogRow({
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h4 className="font-semibold text-slate-950">{log.title}</h4>
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+              <h4 className="font-semibold text-slate-950 dark:text-white">{log.title}</h4>
+              <span className={`rounded-full px-2 py-1 text-xs font-medium ${tone.badge}`}>
                 {statusLabel(log.status)}
               </span>
             </div>
-            <p className="mt-1 text-sm leading-6 text-slate-600">{log.message}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              {log.message}
+            </p>
             <p className="mt-1 text-xs text-slate-400">{formatDate(log.created_at)}</p>
           </div>
         </div>
         <button
-          className="inline-flex w-fit items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="inline-flex w-fit items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
           onClick={onToggle}
           type="button"
         >
           <Terminal className="h-4 w-4" />
-          Detalhes Tecnicos
+          Detalhes tecnicos
         </button>
       </div>
 
@@ -379,10 +604,10 @@ function LogSkeleton() {
     <div className="space-y-4 p-5">
       {Array.from({ length: 4 }).map((_, index) => (
         <div className="flex animate-pulse gap-3" key={index}>
-          <div className="h-10 w-10 rounded-md bg-slate-200" />
+          <div className="h-10 w-10 rounded-md bg-slate-200 dark:bg-slate-800" />
           <div className="flex-1">
-            <div className="h-4 w-56 rounded bg-slate-200" />
-            <div className="mt-3 h-3 w-full max-w-xl rounded bg-slate-200" />
+            <div className="h-4 w-56 rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="mt-3 h-3 w-full max-w-xl rounded bg-slate-200 dark:bg-slate-800" />
           </div>
         </div>
       ))}
@@ -390,41 +615,148 @@ function LogSkeleton() {
   );
 }
 
-async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      Authorization: AUTH_HEADER,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
+async function adminRequest<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = 12000,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        Authorization: AUTH_HEADER,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const payload = await parseResponseBody(response);
+      throw new ApiRequestError(
+        messageFromErrorPayload(payload) ?? `${response.status} ${response.statusText}`,
+        response.status,
+        payload,
+      );
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiRequestError(
+        "Tempo esgotado ao conversar com a API. A stack pode estar subindo ou reiniciando.",
+      );
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function parseResponseBody(response: Response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function ingestionPath(action: ActionKey) {
+  if (action === "politicians") {
+    return "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=5&incluir_senado=true&despesas_senado=false&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=50&patrimonio_tse=false";
   }
 
-  return (await response.json()) as T;
+  if (action === "politiciansFull") {
+    return "/ingestion/politicians/run?itens=100&paginas_camara=6&despesas_por_politico=20&incluir_senado=true&despesas_senado=true&incluir_tse=true&anos_tse=2024,2022&limite_tse_por_cargo=0&patrimonio_tse=true";
+  }
+
+  return "/ingestion/run";
+}
+
+function connectionFromHealth(health: SystemHealth): ConnectionState {
+  if (health.status === "success") {
+    return {
+      status: "online",
+      message: "API, banco, Redis e worker responderam.",
+      checkedAt: health.checked_at,
+    };
+  }
+
+  if (health.status === "degraded") {
+    return {
+      status: "degraded",
+      message: "API respondeu, mas algum servico auxiliar precisa de atencao.",
+      checkedAt: health.checked_at,
+      technicalDetails: health,
+    };
+  }
+
+  return {
+    status: "offline",
+    message: "API respondeu com estado critico.",
+    checkedAt: health.checked_at,
+    technicalDetails: health,
+  };
+}
+
+function frontendErrorLog(error: unknown, title = "Falha de comunicacao") {
+  return {
+    id: `frontend-${Date.now()}`,
+    status: "error",
+    title,
+    message: humanErrorMessage(error),
+    technical_details: serializeError(error),
+    created_at: new Date().toISOString(),
+  };
 }
 
 function serializeError(error: unknown) {
+  if (error instanceof ApiRequestError) {
+    return {
+      name: error.name,
+      message: error.message,
+      status: error.status,
+      payload: error.payload,
+      stack: error.stack,
+    };
+  }
   if (error instanceof Error) {
     return { name: error.name, message: error.message, stack: error.stack };
   }
   return { error };
 }
 
-function errorMessage(error: unknown) {
+function humanErrorMessage(error: unknown) {
+  if (error instanceof ApiRequestError) {
+    return error.message;
+  }
+  if (error instanceof TypeError && error.message.toLowerCase().includes("failed to fetch")) {
+    return "O navegador nao conseguiu chamar a rota /api/backend. Verifique se a porta 3000 esta aberta e se o container web nao reiniciou.";
+  }
   if (error instanceof Error) {
     return error.message;
   }
-  return "erro desconhecido";
+  return "Erro desconhecido ao consultar o sistema.";
+}
+
+function messageFromErrorPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const detail = "detail" in payload ? (payload as { detail?: unknown }).detail : null;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  return null;
 }
 
 function successMessage(action: ActionKey, payload: AdminActionResponse) {
   if (payload.status === "accepted") {
-    return `Tarefa enviada para a fila. ID: ${payload.task_id ?? "sem id"}. O monitor atualiza automaticamente.`;
+    return `Tarefa enviada para a fila. ID: ${payload.task_id ?? "sem id"}. Acompanhe no monitor de logs.`;
   }
 
   if (
@@ -445,6 +777,38 @@ function successMessage(action: ActionKey, payload: AdminActionResponse) {
   return `Tarefa enviada com sucesso: ${payload.task_id ?? "sem id"}`;
 }
 
+function serviceStatusToConnection(status?: string): ConnectionState["status"] {
+  if (status === "ok") {
+    return "online";
+  }
+  if (status === "warning") {
+    return "degraded";
+  }
+  if (status === "error") {
+    return "offline";
+  }
+  return "checking";
+}
+
+function serviceLabel(status?: string) {
+  const labels: Record<string, string> = {
+    ok: "OK",
+    warning: "Atencao",
+    error: "Erro",
+  };
+  return status ? labels[status] ?? status : "Aguardando";
+}
+
+function connectionLabel(status: ConnectionState["status"]) {
+  const labels: Record<ConnectionState["status"], string> = {
+    checking: "Verificando",
+    online: "Online",
+    degraded: "Atencao",
+    offline: "Offline",
+  };
+  return labels[status];
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     success: "Sucesso",
@@ -452,6 +816,55 @@ function statusLabel(status: string) {
     running: "Em execucao",
   };
   return labels[status] ?? status;
+}
+
+function statusTone(status: ConnectionState["status"]) {
+  if (status === "online") {
+    return {
+      badge: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+      container: "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30",
+      icon: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200",
+      muted: "text-emerald-700 dark:text-emerald-300",
+      text: "text-emerald-950 dark:text-emerald-100",
+    };
+  }
+
+  if (status === "degraded" || status === "checking") {
+    return {
+      badge: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
+      container: "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
+      icon: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200",
+      muted: "text-amber-700 dark:text-amber-300",
+      text: "text-amber-950 dark:text-amber-100",
+    };
+  }
+
+  return {
+    badge: "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200",
+    container: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30",
+    icon: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200",
+    muted: "text-red-700 dark:text-red-300",
+    text: "text-red-950 dark:text-red-100",
+  };
+}
+
+function logTone(status: string) {
+  if (status === "error") {
+    return {
+      badge: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200",
+      icon: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-200",
+    };
+  }
+  if (status === "running") {
+    return {
+      badge: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+      icon: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-200",
+    };
+  }
+  return {
+    badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
+    icon: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200",
+  };
 }
 
 function formatDate(value: string) {
