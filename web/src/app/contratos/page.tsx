@@ -1,5 +1,6 @@
 import { ContractsExplorer } from "@/components/ContractsExplorer";
-import { api, type Contract } from "@/lib/api";
+import { api, type Contract, type PaginatedContractsResponse } from "@/lib/api";
+import { PageHeader } from "@/components/ui/Primitives";
 
 const fallbackContracts: Contract[] = [
   {
@@ -42,36 +43,52 @@ const fallbackContracts: Contract[] = [
   },
 ];
 
-async function getContracts(): Promise<{ contracts: Contract[]; isFallback: boolean }> {
+const fallbackPage: PaginatedContractsResponse = {
+  items: fallbackContracts,
+  page: 1,
+  limit: 50,
+  total: fallbackContracts.length,
+  pages: 1,
+  has_next: false,
+  has_previous: false,
+  total_value: fallbackContracts.reduce(
+    (sum, contract) => sum + Number(contract.total_value ?? 0),
+    0,
+  ),
+  statuses: [
+    { status: "monitorado", label: "monitorado", total: 1 },
+    { status: "em analise", label: "em analise", total: 1 },
+  ],
+};
+
+async function getContracts(): Promise<{ page: PaginatedContractsResponse; isFallback: boolean }> {
   try {
-    const contracts = await api.listContracts({ limit: 1000 });
+    const page = await api.listContractsPaginated({ page: 1, limit: 50 });
     return {
-      contracts: contracts.length ? contracts : fallbackContracts,
-      isFallback: contracts.length === 0,
+      page: page.items.length ? page : fallbackPage,
+      isFallback: page.items.length === 0,
     };
   } catch {
-    return { contracts: fallbackContracts, isFallback: true };
+    return { page: fallbackPage, isFallback: true };
   }
 }
 
 export default async function ContratosPage() {
-  const { contracts, isFallback } = await getContracts();
+  const { page, isFallback } = await getContracts();
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-500">
-            Contratos publicos monitorados
-          </p>
-          <h2 className="mt-1 text-2xl font-semibold text-slate-950">Contratos</h2>
-        </div>
-        <span className="w-fit rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
-          {isFallback ? "Dados demonstrativos" : "Dados do backend"}
-        </span>
-      </div>
+      <PageHeader
+        description="Consulta paginada de contratos, fornecedores, orgaos e valores para auditoria."
+        eyebrow="Contratos publicos monitorados"
+        status={{
+          label: isFallback ? "Dados demonstrativos" : `${page.total.toLocaleString("pt-BR")} contratos`,
+          tone: isFallback ? "warning" : "success",
+        }}
+        title="Contratos"
+      />
 
-      <ContractsExplorer contracts={contracts} isFallback={isFallback} />
+      <ContractsExplorer initialPage={page} isFallback={isFallback} />
     </div>
   );
 }

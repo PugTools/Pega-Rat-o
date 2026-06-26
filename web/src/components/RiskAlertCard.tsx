@@ -85,7 +85,7 @@ function severityLabel(value: string) {
     low: "Baixo",
   };
   const normalized = String(value || "").toLowerCase();
-  return labels[normalized] ?? normalized || "Risco";
+  return labels[normalized] ?? (normalized || "Risco");
 }
 
 function normalizeEvidence(value: unknown): Record<string, unknown> {

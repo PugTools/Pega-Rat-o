@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.database import get_db
@@ -43,6 +43,64 @@ def list_contracts(
         query = query.filter(Contract.status == status_filter)
 
     return query.order_by(Contract.created_at.desc()).offset(skip).limit(limit).all()
+
+
+@router.get("/paginated")
+def list_contracts_paginated(
+    db: Session = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=100),
+    q: str | None = None,
+    organization_id: UUID | None = None,
+    supplier_company_id: UUID | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+) -> dict:
+    skip = (page - 1) * limit
+    query = _apply_contract_filters(
+        db.query(Contract).options(
+            selectinload(Contract.supplier),
+            selectinload(Contract.organization),
+        ),
+        q=q,
+        organization_id=organization_id,
+        supplier_company_id=supplier_company_id,
+        status_filter=status_filter,
+    )
+    count_query = _apply_contract_filters(
+        db.query(Contract.id),
+        q=q,
+        organization_id=organization_id,
+        supplier_company_id=supplier_company_id,
+        status_filter=status_filter,
+    )
+    total = count_query.order_by(None).count()
+    total_value = _contract_total_value(
+        db=db,
+        q=q,
+        organization_id=organization_id,
+        supplier_company_id=supplier_company_id,
+        status_filter=status_filter,
+    )
+    contracts = (
+        query.order_by(Contract.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "items": [
+            ContractResponse.model_validate(contract).model_dump(mode="json")
+            for contract in contracts
+        ],
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "pages": max(1, (total + limit - 1) // limit),
+        "has_next": skip + limit < total,
+        "has_previous": page > 1,
+        "total_value": str(total_value or 0),
+        "statuses": _contract_status_counts(db),
+    }
 
 
 @router.get("/{contract_id}", response_model=ContractDetailResponse)
@@ -105,6 +163,66 @@ def get_contract(contract_id: UUID, db: Session = Depends(get_db)) -> dict:
     payload["expenses"] = [_expense_payload(*row) for row in expense_rows]
     payload["expense_total"] = str(sum((expense.amount or 0) for expense, _, _ in expense_rows))
     return payload
+
+
+def _apply_contract_filters(
+    query,
+    *,
+    q: str | None,
+    organization_id: UUID | None,
+    supplier_company_id: UUID | None,
+    status_filter: str | None,
+):
+    if q:
+        query = query.filter(
+            or_(
+                Contract.contract_number.ilike(f"%{q}%"),
+                Contract.process_number.ilike(f"%{q}%"),
+                Contract.object.ilike(f"%{q}%"),
+            )
+        )
+    if organization_id:
+        query = query.filter(Contract.organization_id == organization_id)
+    if supplier_company_id:
+        query = query.filter(Contract.supplier_company_id == supplier_company_id)
+    if status_filter:
+        query = query.filter(Contract.status == status_filter)
+    return query
+
+
+def _contract_total_value(
+    db: Session,
+    *,
+    q: str | None,
+    organization_id: UUID | None,
+    supplier_company_id: UUID | None,
+    status_filter: str | None,
+):
+    query = _apply_contract_filters(
+        db.query(func.coalesce(func.sum(Contract.total_value), 0)),
+        q=q,
+        organization_id=organization_id,
+        supplier_company_id=supplier_company_id,
+        status_filter=status_filter,
+    )
+    return query.scalar()
+
+
+def _contract_status_counts(db: Session) -> list[dict]:
+    rows = (
+        db.query(Contract.status, func.count(Contract.id))
+        .group_by(Contract.status)
+        .order_by(func.count(Contract.id).desc(), Contract.status)
+        .all()
+    )
+    return [
+        {
+            "status": str(status_value or "sem_status"),
+            "label": str(status_value or "Sem status"),
+            "total": int(total or 0),
+        }
+        for status_value, total in rows
+    ]
 
 
 def _expense_payload(

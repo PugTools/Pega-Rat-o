@@ -96,6 +96,24 @@ export type ContractDetail = Contract & {
   expense_total?: string | number | null;
 };
 
+export type ContractStatusSummary = {
+  status: string;
+  label: string;
+  total: number;
+};
+
+export type PaginatedContractsResponse = {
+  items: Contract[];
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+  total_value: string | number;
+  statuses: ContractStatusSummary[];
+};
+
 export type Expense = {
   id: string;
   organization_id?: string | null;
@@ -134,6 +152,32 @@ export type RiskAlert = {
   status: string;
   created_at: string;
   source?: string;
+};
+
+export type AlertCategory = {
+  alert_type: string;
+  label: string;
+  total: number;
+};
+
+export type ListAlertsParams = {
+  page?: number;
+  limit?: number;
+  status?: string;
+  severity?: string;
+  alertType?: string;
+  entityType?: string;
+};
+
+export type PaginatedAlertsResponse = {
+  items: RiskAlert[];
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+  categories: AlertCategory[];
 };
 
 export type SearchResult = {
@@ -213,6 +257,7 @@ export type PaginatedPersonsResponse = {
 
 export type ListContractsParams = {
   limit?: number;
+  page?: number;
   q?: string;
   status?: string;
   organizationId?: string;
@@ -418,9 +463,52 @@ export const api = {
     }
     return request<Contract[]>(`/contracts?${searchParams.toString()}`);
   },
+  listContractsPaginated: (params: ListContractsParams = {}) => {
+    const resolvedParams = { page: 1, limit: 50, ...params };
+    const searchParams = new URLSearchParams({
+      page: String(resolvedParams.page ?? 1),
+      limit: String(resolvedParams.limit ?? 50),
+    });
+    if (resolvedParams.q) {
+      searchParams.set("q", resolvedParams.q);
+    }
+    if (resolvedParams.status) {
+      searchParams.set("status", resolvedParams.status);
+    }
+    if (resolvedParams.organizationId) {
+      searchParams.set("organization_id", resolvedParams.organizationId);
+    }
+    if (resolvedParams.supplierCompanyId) {
+      searchParams.set("supplier_company_id", resolvedParams.supplierCompanyId);
+    }
+    return request<PaginatedContractsResponse>(
+      `/contracts/paginated?${searchParams.toString()}`,
+    );
+  },
   getContract: (id: string) => request<ContractDetail>(`/contracts/${id}`),
   listExpenses: (limit = 50) => request<Expense[]>(`/expenses?limit=${limit}`),
   listAlerts: (limit = 50) => request<RiskAlert[]>(`/alerts?limit=${limit}`),
+  listAlertsPaginated: (params: ListAlertsParams = {}) => {
+    const searchParams = new URLSearchParams({
+      page: String(params.page ?? 1),
+      limit: String(params.limit ?? 25),
+    });
+    if (params.status) {
+      searchParams.set("status", params.status);
+    }
+    if (params.severity) {
+      searchParams.set("severity", params.severity);
+    }
+    if (params.alertType) {
+      searchParams.set("alert_type", params.alertType);
+    }
+    if (params.entityType) {
+      searchParams.set("entity_type", params.entityType);
+    }
+    return request<PaginatedAlertsResponse>(
+      `/alerts/paginated?${searchParams.toString()}`,
+    );
+  },
   listEntityAlerts: (entityType: string, entityId: string, limit = 50) =>
     request<RiskAlert[]>(
       `/alerts/entity/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?limit=${limit}`,

@@ -1,10 +1,27 @@
-import { FileText, ShieldAlert, TrendingUp, Users, WalletCards } from "lucide-react";
+import Link from "next/link";
+import {
+  Bell,
+  Building2,
+  FileText,
+  MapPinned,
+  MessageSquareText,
+  ShieldAlert,
+  TrendingUp,
+  Users,
+  WalletCards,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { api, type Contract, type Expense, type Person } from "@/lib/api";
-import { BackofficeSettings } from "@/components/BackofficeSettings";
 import { CopilotChat } from "@/components/CopilotChat";
 import { DashboardIntelligence } from "@/components/DashboardIntelligence";
 import { MapSection } from "@/components/MapSection";
 import { PoliticoProfile } from "@/components/PoliticoProfile";
+import {
+  MetricTile,
+  ModuleCard,
+  PageHeader,
+  StatusCallout,
+} from "@/components/ui/Primitives";
 
 type DashboardData = {
   contracts: Contract[];
@@ -144,82 +161,136 @@ export default async function Home() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-500">
-            Observatorio Nacional de Gastos Publicos
-          </p>
-          <h2 className="mt-1 text-2xl font-semibold text-slate-950">
-            Dashboard Executivo
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Visao operacional de contratos, despesas, politicos monitorados e
-            alertas priorizados pelo motor de risco.
-          </p>
+      <PageHeader
+        description="Uma visao curta do que exige atencao agora: volume monitorado, pessoas, contratos e alertas priorizados."
+        eyebrow="Observatorio Nacional de Gastos Publicos"
+        status={{
+          label: isFallback ? "Dados demonstrativos" : "Dados reais/cacheados",
+          tone: isFallback ? "warning" : "success",
+        }}
+        title="Dashboard Executivo"
+      />
+
+      {isFallback ? (
+        <div className="mb-6">
+          <StatusCallout
+            message="A API nao retornou todos os dados esperados, entao esta tela exibe uma amostra segura para manter a navegacao funcionando. Use o Admin para verificar a ingestao e os logs."
+            title="Painel em modo demonstrativo"
+            tone="warning"
+          />
         </div>
-        <span className="w-fit rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-          {isFallback ? "Aguardando dados reais" : "Dados reais/cacheados"}
-        </span>
-      </div>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
+        <MetricTile
           detail="contratos no recorte atual"
           icon={FileText}
           label="Contratos"
-          tone="emerald"
+          tone="success"
           value={String(totalContracts)}
         />
-        <MetricCard
+        <MetricTile
           detail="despesas carregadas no painel"
           icon={WalletCards}
           label="Volume gasto"
-          tone="emerald"
+          tone="success"
           value={currency(totalSpent)}
         />
-        <MetricCard
+        <MetricTile
           detail="pessoas com perfil consolidado"
           icon={Users}
           label="Politicos monitorados"
-          tone="slate"
+          tone="neutral"
           value={String(monitoredPoliticians)}
         />
-        <MetricCard
+        <MetricTile
           detail="prioridade alta para auditoria"
           icon={ShieldAlert}
           label="Alertas criticos"
-          tone="red"
+          tone="danger"
           value={String(criticalAlerts)}
         />
       </section>
 
-      <section className="mt-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.65fr)]">
+        <ModuleCard
+          description="Atalhos para as tarefas mais usadas, sem esconder as funcoes em menus."
+          icon={TrendingUp}
+          title="Modulos principais"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ModuleShortcut
+              description="Buscar por nome, cargo, UF e abrir relatorio individual."
+              href="/politicos"
+              icon={Users}
+              title="Investigar politicos"
+            />
+            <ModuleShortcut
+              description="Auditar valores, fornecedores, orgaos e objetos contratados."
+              href="/contratos"
+              icon={Building2}
+              title="Analisar contratos"
+            />
+            <ModuleShortcut
+              description="Filtrar riscos por categoria, severidade e status."
+              href="/alertas"
+              icon={Bell}
+              title="Priorizar alertas"
+            />
+            <ModuleShortcut
+              description="Disparar ingestao, acompanhar logs e ativar fontes."
+              href="/admin"
+              icon={ShieldAlert}
+              title="Operar sistema"
+            />
+          </div>
+        </ModuleCard>
+
+        <ModuleCard
+          description="Entidade com maior volume no recorte carregado."
+          icon={TrendingUp}
+          title="Ponto de atencao"
+        >
           <div>
-            <p className="text-sm font-medium text-slate-500">Maior gasto parlamentar</p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-950">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              Maior gasto parlamentar
+            </p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
               {topPerson?.full_name ?? "Sem politico carregado"}
             </h3>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {(topPerson?.party_acronym ?? "-")} / {(topPerson?.state_code ?? "-")}
             </p>
+            <div className="mt-4 flex items-center gap-3 rounded-md bg-slate-50 px-4 py-3 dark:bg-slate-900">
+              <TrendingUp className="h-5 w-5 text-emerald-700" />
+              <span className="text-xl font-semibold text-slate-950 dark:text-white">
+                {currency(topPerson?.latest_expense_total)}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-3 rounded-md bg-slate-50 px-4 py-3">
-            <TrendingUp className="h-5 w-5 text-emerald-700" />
-            <span className="text-xl font-semibold text-slate-950">
-              {currency(topPerson?.latest_expense_total)}
-            </span>
-          </div>
-        </div>
-      </section>
+        </ModuleCard>
+      </div>
 
-      <MapSection />
+      <div className="mt-6">
+        <ModuleCard
+          description="Distribuicao visual para localizar concentracoes por UF."
+          icon={MapPinned}
+          title="Mapa nacional"
+        >
+          <MapSection />
+        </ModuleCard>
+      </div>
 
       <PoliticoProfile persons={persons} isFallback={isFallback} />
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)]">
-        <CopilotChat />
-        <BackofficeSettings />
+      <div className="mt-6">
+        <ModuleCard
+          description="Pergunte sobre alertas, contratos, fornecedores e proximas linhas de investigacao."
+          icon={MessageSquareText}
+          title="Copiloto investigativo"
+        >
+          <CopilotChat />
+        </ModuleCard>
       </div>
 
       <DashboardIntelligence />
@@ -227,37 +298,31 @@ export default async function Home() {
   );
 }
 
-function MetricCard({
-  detail,
+function ModuleShortcut({
+  description,
+  href,
   icon: Icon,
-  label,
-  tone,
-  value,
+  title,
 }: {
-  detail: string;
-  icon: typeof FileText;
-  label: string;
-  tone: "emerald" | "red" | "slate";
-  value: string;
+  description: string;
+  href: string;
+  icon: LucideIcon;
+  title: string;
 }) {
-  const toneClasses = {
-    emerald: "bg-emerald-50 text-emerald-700",
-    red: "bg-red-50 text-red-700",
-    slate: "bg-slate-100 text-slate-700",
-  };
-
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-slate-500">{label}</p>
-        <div className={`rounded-md p-2 ${toneClasses[tone]}`}>
-          <Icon className="h-5 w-5" />
-        </div>
+    <Link
+      className="group rounded-lg border border-slate-200 p-4 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:border-slate-700 dark:hover:bg-slate-900"
+      href={href}
+    >
+      <div className="flex items-center gap-3">
+        <span className="rounded-md bg-slate-100 p-2 text-slate-700 group-hover:bg-white dark:bg-slate-800 dark:text-slate-200 dark:group-hover:bg-slate-950">
+          <Icon className="h-4 w-4" />
+        </span>
+        <h4 className="font-semibold text-slate-950 dark:text-white">{title}</h4>
       </div>
-      <p className="mt-4 text-2xl font-semibold text-slate-950 md:text-3xl">
-        {value}
+      <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+        {description}
       </p>
-      <p className="mt-1 text-xs text-slate-500">{detail}</p>
-    </div>
+    </Link>
   );
 }

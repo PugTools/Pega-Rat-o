@@ -3,7 +3,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.cache import get_json_cache, set_json_cache
@@ -44,6 +44,67 @@ def list_alerts(
     return payload
 
 
+@router.get("/paginated")
+def list_alerts_paginated(
+    db: Session = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=25, ge=1, le=100),
+    status: str | None = None,
+    severity: str | None = None,
+    alert_type: str | None = None,
+    entity_type: str | None = None,
+) -> dict[str, Any]:
+    normalized_entity_type = _normalize_entity_type(entity_type) if entity_type else None
+    normalized_severity = severity.lower() if severity else None
+    normalized_status = status.lower() if status else None
+    normalized_alert_type = alert_type.lower() if alert_type else None
+    skip = (page - 1) * limit
+    cache_key = (
+        "alerts:paginated:"
+        f"{page}:{limit}:{normalized_status or 'all'}:"
+        f"{normalized_severity or 'all'}:{normalized_alert_type or 'all'}:"
+        f"{normalized_entity_type or 'all'}"
+    )
+    cached = get_json_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    query = _apply_alert_filters(
+        db.query(RiskAlert),
+        status=normalized_status,
+        severity=normalized_severity,
+        alert_type=normalized_alert_type,
+        entity_type=normalized_entity_type,
+    )
+    total = query.order_by(None).count()
+    alerts = (
+        query.order_by(_severity_rank(), RiskAlert.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    payload = {
+        "items": [
+            RiskAlertResponse.model_validate(alert).model_dump(mode="json")
+            for alert in alerts
+        ],
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "pages": max(1, (total + limit - 1) // limit),
+        "has_next": skip + limit < total,
+        "has_previous": page > 1,
+        "categories": _alert_categories(
+            db=db,
+            status=normalized_status,
+            severity=normalized_severity,
+            entity_type=normalized_entity_type,
+        ),
+    }
+    set_json_cache(cache_key, payload, ttl_seconds=180)
+    return payload
+
+
 @router.get("/entity/{entity_type}/{entity_id}")
 def list_entity_alerts(
     entity_type: str,
@@ -78,6 +139,78 @@ def list_entity_alerts(
     payload = alerts[:limit]
     set_json_cache(cache_key, payload, ttl_seconds=300)
     return payload
+
+
+def _severity_rank():
+    return case(
+        (RiskAlert.severity == "critical", 1),
+        (RiskAlert.severity == "high", 2),
+        (RiskAlert.severity == "medium", 3),
+        (RiskAlert.severity == "low", 4),
+        else_=5,
+    )
+
+
+def _apply_alert_filters(
+    query,
+    *,
+    status: str | None,
+    severity: str | None,
+    alert_type: str | None,
+    entity_type: str | None,
+):
+    if status:
+        query = query.filter(RiskAlert.status == status)
+    if severity:
+        query = query.filter(RiskAlert.severity == severity)
+    if alert_type:
+        query = query.filter(RiskAlert.alert_type == alert_type)
+    if entity_type:
+        query = query.filter(RiskAlert.entity_type == entity_type)
+    return query
+
+
+def _alert_categories(
+    db: Session,
+    *,
+    status: str | None,
+    severity: str | None,
+    entity_type: str | None,
+) -> list[dict[str, Any]]:
+    query = _apply_alert_filters(
+        db.query(RiskAlert.alert_type, func.count(RiskAlert.id)),
+        status=status,
+        severity=severity,
+        alert_type=None,
+        entity_type=entity_type,
+    )
+    rows = (
+        query.group_by(RiskAlert.alert_type)
+        .order_by(func.count(RiskAlert.id).desc(), RiskAlert.alert_type)
+        .all()
+    )
+    return [
+        {
+            "alert_type": str(alert_type or "outros"),
+            "label": _alert_type_label(str(alert_type or "outros")),
+            "total": int(total or 0),
+        }
+        for alert_type, total in rows
+    ]
+
+
+def _alert_type_label(alert_type: str) -> str:
+    labels = {
+        "expense_fragmentation": "Despesas fracionadas",
+        "supplier_concentration": "Concentracao de fornecedor",
+        "abnormal_contract_growth": "Crescimento contratual",
+        "abnormal_growth": "Crescimento anormal",
+        "incestuous_relationship": "Vinculo suspeito",
+        "nepotism_cross": "Nepotismo cruzado",
+        "donor_winner": "Doador vencedor",
+        "graph_risk": "Risco no grafo",
+    }
+    return labels.get(alert_type, alert_type.replace("_", " ").title())
 
 
 def _persisted_entity_alerts(

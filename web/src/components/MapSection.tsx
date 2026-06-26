@@ -7,9 +7,9 @@ const NationalMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+      <div className="flex h-[420px] items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
         Carregando mapa nacional...
-      </section>
+      </div>
     ),
   },
 );

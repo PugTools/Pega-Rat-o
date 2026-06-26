@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BackofficeSettings } from "@/components/BackofficeSettings";
+import { PageHeader } from "@/components/ui/Primitives";
 
 const API_BASE_URL = "/api/backend";
 const AUTH_HEADER = "Bearer mock-token-ongp";
@@ -350,24 +352,12 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <header className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              Backoffice operacional
-            </p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
-              Administracao do Sistema
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-              Acompanhe se a API esta viva, se o worker esta processando e em qual
-              etapa a ingestao esta. A tela atualiza sozinha, sem deixar tarefa
-              rodando no escuro.
-            </p>
-          </div>
-          <ConnectionBadge connection={connection} loading={loading} />
-        </div>
-      </header>
+      <PageHeader
+        actions={<ConnectionBadge connection={connection} loading={loading} />}
+        description="Controle de ingestao, fontes, workers, logs e calibragem. Cada modulo mostra o estado operacional e a proxima acao possivel."
+        eyebrow="Backoffice operacional"
+        title="Administracao do Sistema"
+      />
 
       <OperationalHud
         activeTasks={activeTasks}
@@ -433,6 +423,8 @@ export default function AdminPage() {
           title="Executar ingestao geral"
         />
       </section>
+
+      <BackofficeSettings />
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">

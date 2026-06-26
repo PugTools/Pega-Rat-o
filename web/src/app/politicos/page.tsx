@@ -1,5 +1,6 @@
 import { PoliticiansExplorer } from "@/components/PoliticiansExplorer";
 import { api, type PaginatedPersonsResponse, type Person } from "@/lib/api";
+import { PageHeader } from "@/components/ui/Primitives";
 
 const fallbackPersons: Person[] = [
   {
@@ -79,12 +80,15 @@ export default async function PoliticosPage() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-6">
-        <p className="text-sm font-medium text-slate-500">
-          Cadastro e monitoramento
-        </p>
-        <h2 className="mt-1 text-2xl font-semibold text-slate-950">Politicos</h2>
-      </div>
+      <PageHeader
+        description="Busca paginada para consultar agentes publicos sem travar a tela, mesmo com centenas de milhares de registros."
+        eyebrow="Cadastro e monitoramento"
+        status={{
+          label: isFallback ? "Amostra demonstrativa" : `${page.total.toLocaleString("pt-BR")} registros`,
+          tone: isFallback ? "warning" : "success",
+        }}
+        title="Politicos"
+      />
 
       <PoliticiansExplorer initialPage={page} isFallback={isFallback} />
     </div>

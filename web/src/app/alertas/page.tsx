@@ -1,14 +1,15 @@
 import { DashboardIntelligence } from "@/components/DashboardIntelligence";
+import { PageHeader } from "@/components/ui/Primitives";
 
 export default function AlertasPage() {
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-6">
-        <p className="text-sm font-medium text-slate-500">
-          Monitoramento automatizado
-        </p>
-        <h2 className="mt-1 text-2xl font-semibold text-slate-950">Alertas</h2>
-      </div>
+      <PageHeader
+        description="Fila de sinais de risco gerados por regras, grafo e enriquecimentos. Use categoria, severidade e status para priorizar a auditoria."
+        eyebrow="Monitoramento automatizado"
+        status={{ label: "Paginado por prioridade", tone: "success" }}
+        title="Alertas"
+      />
 
       <DashboardIntelligence />
     </div>
