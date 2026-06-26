@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import nullslast
+from sqlalchemy import func, nullslast
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.cache import get_json_cache, set_json_cache
@@ -75,6 +75,65 @@ def list_persons(
     return payload
 
 
+@router.get("/paginated")
+def list_persons_paginated(
+    db: Session = Depends(get_db),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=100),
+    name: str | None = None,
+    masked_cpf: str | None = None,
+    party: str | None = None,
+    state_code: str | None = None,
+    role_name: str | None = None,
+    jurisdiction_level: str | None = None,
+    municipality_code: str | None = None,
+    order_by: str = Query(default="expense_total", pattern="^(expense_total|name|party|state)$"),
+) -> dict:
+    skip = (page - 1) * limit
+    cache_key = (
+        "persons:paginated:"
+        f"{page}:{limit}:{name or ''}:{masked_cpf or ''}:"
+        f"{party or ''}:{state_code or ''}:{role_name or ''}:"
+        f"{jurisdiction_level or ''}:{municipality_code or ''}:{order_by}"
+    )
+    cached = get_json_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    filters = {
+        "name": name,
+        "masked_cpf": masked_cpf,
+        "party": party,
+        "state_code": state_code,
+        "role_name": role_name,
+        "jurisdiction_level": jurisdiction_level,
+        "municipality_code": municipality_code,
+    }
+    count_query = _apply_person_filters(db.query(Person.id), filters)
+    total = count_query.order_by(None).count()
+
+    query = _apply_person_filters(
+        db.query(Person).options(selectinload(Person.roles)),
+        filters,
+    )
+    query = _apply_person_ordering(query, order_by)
+    persons = query.offset(skip).limit(limit).all()
+    payload = {
+        "items": [
+            PersonResponse.model_validate(person).model_dump(mode="json")
+            for person in persons
+        ],
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "pages": max(1, (total + limit - 1) // limit),
+        "has_next": skip + limit < total,
+        "has_previous": page > 1,
+    }
+    set_json_cache(cache_key, payload, ttl_seconds=180)
+    return payload
+
+
 @router.get("/{person_id}", response_model=PersonDetailResponse)
 def get_person(person_id: UUID, db: Session = Depends(get_db)) -> dict:
     cache_key = f"persons:detail:{person_id}"
@@ -132,6 +191,48 @@ def list_person_expenses(
     payload = [_expense_payload(*row) for row in rows]
     set_json_cache(cache_key, payload, ttl_seconds=300)
     return payload
+
+
+def _apply_person_filters(query, filters: dict):
+    name = filters.get("name")
+    masked_cpf = filters.get("masked_cpf")
+    party = filters.get("party")
+    state_code = filters.get("state_code")
+    role_name = filters.get("role_name")
+    jurisdiction_level = filters.get("jurisdiction_level")
+    municipality_code = filters.get("municipality_code")
+
+    if name:
+        normalized_name = name.strip().lower()
+        query = query.filter(
+            func.lower(Person.normalized_name).ilike(f"%{normalized_name}%")
+        )
+    if masked_cpf:
+        query = query.filter(Person.masked_cpf == masked_cpf)
+    if party:
+        query = query.filter(Person.party_acronym == party.upper())
+    if state_code:
+        query = query.filter(Person.state_code == state_code.upper())
+    if role_name or jurisdiction_level or municipality_code:
+        query = query.join(Person.roles)
+        if role_name:
+            query = query.filter(PublicRole.role_name.ilike(f"%{role_name}%"))
+        if jurisdiction_level:
+            query = query.filter(PublicRole.jurisdiction_level == jurisdiction_level)
+        if municipality_code:
+            query = query.filter(PublicRole.municipality_code == municipality_code)
+        query = query.distinct()
+    return query
+
+
+def _apply_person_ordering(query, order_by: str):
+    if order_by == "expense_total":
+        return query.order_by(nullslast(Person.latest_expense_total.desc()), Person.full_name)
+    if order_by == "party":
+        return query.order_by(nullslast(Person.party_acronym), Person.full_name)
+    if order_by == "state":
+        return query.order_by(nullslast(Person.state_code), Person.full_name)
+    return query.order_by(Person.full_name)
 
 
 def _query_person_expense_rows(

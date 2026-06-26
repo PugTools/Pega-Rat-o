@@ -190,6 +190,8 @@ export type RiskSettings = {
 
 export type ListPersonsParams = {
   limit?: number;
+  page?: number;
+  skip?: number;
   party?: string;
   stateCode?: string;
   name?: string;
@@ -197,6 +199,16 @@ export type ListPersonsParams = {
   jurisdictionLevel?: string;
   municipalityCode?: string;
   orderBy?: "expense_total" | "name" | "party" | "state";
+};
+
+export type PaginatedPersonsResponse = {
+  items: Person[];
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+  has_next: boolean;
+  has_previous: boolean;
 };
 
 export type ListContractsParams = {
@@ -344,9 +356,46 @@ export const api = {
     if (resolvedParams.municipalityCode) {
       searchParams.set("municipality_code", resolvedParams.municipalityCode);
     }
+    if (resolvedParams.skip) {
+      searchParams.set("skip", String(resolvedParams.skip));
+    }
 
     const persons = await request<Person[]>(`/persons?${searchParams.toString()}`);
     return persons.map(normalizePerson);
+  },
+  listPersonsPaginated: async (params: ListPersonsParams = {}) => {
+    const resolvedParams = { page: 1, limit: 50, orderBy: "expense_total" as const, ...params };
+    const searchParams = new URLSearchParams({
+      page: String(resolvedParams.page ?? 1),
+      limit: String(resolvedParams.limit ?? 50),
+      order_by: resolvedParams.orderBy ?? "expense_total",
+    });
+    if (resolvedParams.party) {
+      searchParams.set("party", resolvedParams.party);
+    }
+    if (resolvedParams.stateCode) {
+      searchParams.set("state_code", resolvedParams.stateCode);
+    }
+    if (resolvedParams.name) {
+      searchParams.set("name", resolvedParams.name);
+    }
+    if (resolvedParams.roleName) {
+      searchParams.set("role_name", resolvedParams.roleName);
+    }
+    if (resolvedParams.jurisdictionLevel) {
+      searchParams.set("jurisdiction_level", resolvedParams.jurisdictionLevel);
+    }
+    if (resolvedParams.municipalityCode) {
+      searchParams.set("municipality_code", resolvedParams.municipalityCode);
+    }
+
+    const payload = await request<PaginatedPersonsResponse>(
+      `/persons/paginated?${searchParams.toString()}`,
+    );
+    return {
+      ...payload,
+      items: payload.items.map(normalizePerson),
+    };
   },
   getPerson: async (id: string) => normalizePerson(await request<PersonDetail>(`/persons/${id}`)) as PersonDetail,
   listContracts: (params: number | ListContractsParams = 50) => {

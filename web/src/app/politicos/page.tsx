@@ -1,5 +1,5 @@
 import { PoliticiansExplorer } from "@/components/PoliticiansExplorer";
-import { api, type Person } from "@/lib/api";
+import { api, type PaginatedPersonsResponse, type Person } from "@/lib/api";
 
 const fallbackPersons: Person[] = [
   {
@@ -52,20 +52,30 @@ const fallbackPersons: Person[] = [
   },
 ];
 
-async function getPersons(): Promise<{ persons: Person[]; isFallback: boolean }> {
+const fallbackPage: PaginatedPersonsResponse = {
+  items: fallbackPersons,
+  page: 1,
+  limit: 50,
+  total: fallbackPersons.length,
+  pages: 1,
+  has_next: false,
+  has_previous: false,
+};
+
+async function getPersons(): Promise<{ page: PaginatedPersonsResponse; isFallback: boolean }> {
   try {
-    const persons = await api.listPersons({ limit: 1000, orderBy: "name" });
+    const page = await api.listPersonsPaginated({ page: 1, limit: 50, orderBy: "name" });
     return {
-      persons: persons.length ? persons : fallbackPersons,
-      isFallback: persons.length === 0,
+      page: page.items.length ? page : fallbackPage,
+      isFallback: page.items.length === 0,
     };
   } catch {
-    return { persons: fallbackPersons, isFallback: true };
+    return { page: fallbackPage, isFallback: true };
   }
 }
 
 export default async function PoliticosPage() {
-  const { persons, isFallback } = await getPersons();
+  const { page, isFallback } = await getPersons();
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -76,7 +86,7 @@ export default async function PoliticosPage() {
         <h2 className="mt-1 text-2xl font-semibold text-slate-950">Politicos</h2>
       </div>
 
-      <PoliticiansExplorer persons={persons} isFallback={isFallback} />
+      <PoliticiansExplorer initialPage={page} isFallback={isFallback} />
     </div>
   );
 }
