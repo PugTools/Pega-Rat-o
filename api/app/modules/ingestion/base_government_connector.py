@@ -274,6 +274,13 @@ class BaseGovernmentConnector(ABC):
         if isinstance(payload, list):
             return [item for item in payload if isinstance(item, dict)]
         if isinstance(payload, dict):
+            result = payload.get("result")
+            if isinstance(result, dict):
+                for key in ("results", "records", "items", "data"):
+                    value = result.get(key)
+                    if isinstance(value, list):
+                        return [item for item in value if isinstance(item, dict)]
+                return [result]
             for key in ("data", "dados", "items", "resultado", "content", "results"):
                 value = payload.get(key)
                 if isinstance(value, list):

@@ -9,9 +9,12 @@ import {
   Flame,
   Loader2,
   Play,
+  Power,
   Radar,
   RefreshCw,
+  Search,
   Server,
+  Settings2,
   Terminal,
   Wifi,
   WifiOff,
@@ -79,6 +82,23 @@ type IngestionSourceOption = {
   source_type: string;
   destination_model: string;
   base_url: string;
+  category: string;
+  auth_env?: string | null;
+  auth_header?: string | null;
+  requires_token: boolean;
+  has_auth_token: boolean;
+  can_enable: boolean;
+  activation_notes: string[];
+  endpoints: Record<string, string>;
+};
+
+type ActivationHelp = {
+  registry_path: string;
+  env_file: string;
+  env_example: string;
+  github_secrets: string[];
+  steps: string[];
+  production_note: string;
 };
 
 type IngestionSourcesResponse = {
@@ -86,6 +106,14 @@ type IngestionSourcesResponse = {
   total: number;
   enabled: number;
   items: IngestionSourceOption[];
+  activation_help: ActivationHelp;
+};
+
+type SourceActivationResponse = {
+  status: string;
+  message: string;
+  source: IngestionSourceOption;
+  activation_help: ActivationHelp;
 };
 
 class ApiRequestError extends Error {
@@ -118,6 +146,10 @@ export default function AdminPage() {
   const [selectedSourceKey, setSelectedSourceKey] = useState("all");
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [activationHelp, setActivationHelp] = useState<ActivationHelp | null>(null);
+  const [sourceStatusFilter, setSourceStatusFilter] = useState<"all" | "enabled" | "disabled">("all");
+  const [sourceSearch, setSourceSearch] = useState("");
+  const [updatingSourceKey, setUpdatingSourceKey] = useState<string | null>(null);
 
   const servicesByName = useMemo(() => {
     const entries: Array<[string, HealthService]> =
@@ -133,6 +165,14 @@ export default function AdminPage() {
     () => logs.filter((log) => log.status === "error" || log.status === "warning").length,
     [logs],
   );
+  const sourceStats = useMemo(() => {
+    const realSources = sources.filter((source) => source.key !== "all");
+    return {
+      total: realSources.length,
+      enabled: realSources.filter((source) => source.enabled).length,
+      disabled: realSources.filter((source) => !source.enabled).length,
+    };
+  }, [sources]);
 
   const loadSources = useCallback(async () => {
     setSourcesLoading(true);
@@ -145,6 +185,7 @@ export default function AdminPage() {
       );
       const items = payload.items ?? [];
       setSources(items);
+      setActivationHelp(payload.activation_help ?? null);
       setSelectedSourceKey((current) =>
         items.some((source) => source.key === current && source.enabled)
           ? current
@@ -160,6 +201,12 @@ export default function AdminPage() {
           source_type: "batch",
           destination_model: "mixed",
           base_url: "sources_registry.json",
+          category: "operacional",
+          requires_token: false,
+          has_auth_token: true,
+          can_enable: false,
+          activation_notes: ["Fallback local enquanto o backend nao respondeu."],
+          endpoints: {},
         },
       ]);
       setSelectedSourceKey("all");
@@ -267,6 +314,38 @@ export default function AdminPage() {
     }
   }
 
+  async function toggleSource(source: IngestionSourceOption) {
+    setUpdatingSourceKey(source.key);
+    setLastActionError(null);
+    try {
+      const payload = await adminRequest<SourceActivationResponse>(
+        `/admin/ingestion/sources/${encodeURIComponent(source.key)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !source.enabled }),
+        },
+        10000,
+      );
+      setSources((current) =>
+        current.map((item) =>
+          item.key === payload.source.key ? payload.source : item,
+        ),
+      );
+      setActivationHelp(payload.activation_help ?? activationHelp);
+      if (!payload.source.enabled && selectedSourceKey === payload.source.key) {
+        setSelectedSourceKey("all");
+      }
+      setToastMessage(payload.message);
+      window.setTimeout(() => setToastMessage(null), 6000);
+      await refreshAll();
+    } catch (error) {
+      setLastActionError(error);
+      setLogs((current) => [frontendErrorLog(error, "Falha ao alterar fonte"), ...current]);
+    } finally {
+      setUpdatingSourceKey(null);
+    }
+  }
+
   const actionsDisabled = connection.status === "offline" || runningAction !== null;
 
   return (
@@ -311,6 +390,21 @@ export default function AdminPage() {
         sourcesLoading={sourcesLoading}
         onSelectSource={setSelectedSourceKey}
         onRun={() => runAction("massive")}
+      />
+
+      <SourcesActivationPanel
+        activationHelp={activationHelp}
+        filter={sourceStatusFilter}
+        onFilterChange={setSourceStatusFilter}
+        onRefresh={loadSources}
+        onSearchChange={setSourceSearch}
+        onToggleSource={toggleSource}
+        search={sourceSearch}
+        sources={sources}
+        sourcesError={sourcesError}
+        sourcesLoading={sourcesLoading}
+        stats={sourceStats}
+        updatingSourceKey={updatingSourceKey}
       />
 
       <section className="grid gap-4 lg:grid-cols-3">
@@ -500,6 +594,347 @@ function MassiveIngestionPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function SourcesActivationPanel({
+  activationHelp,
+  filter,
+  onFilterChange,
+  onRefresh,
+  onSearchChange,
+  onToggleSource,
+  search,
+  sources,
+  sourcesError,
+  sourcesLoading,
+  stats,
+  updatingSourceKey,
+}: {
+  activationHelp: ActivationHelp | null;
+  filter: "all" | "enabled" | "disabled";
+  onFilterChange: (filter: "all" | "enabled" | "disabled") => void;
+  onRefresh: () => void;
+  onSearchChange: (value: string) => void;
+  onToggleSource: (source: IngestionSourceOption) => void;
+  search: string;
+  sources: IngestionSourceOption[];
+  sourcesError: string | null;
+  sourcesLoading: boolean;
+  stats: { total: number; enabled: number; disabled: number };
+  updatingSourceKey: string | null;
+}) {
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleSources = sources
+    .filter((source) => source.key !== "all")
+    .filter((source) => {
+      if (filter === "enabled") {
+        return source.enabled;
+      }
+      if (filter === "disabled") {
+        return !source.enabled;
+      }
+      return true;
+    })
+    .filter((source) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+      return [
+        source.key,
+        source.name,
+        source.category,
+        source.base_url,
+        source.destination_model,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedSearch);
+    });
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-md bg-slate-100 p-2 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                <Settings2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-950 dark:text-white">
+                  Fontes e ativacao de conectores
+                </h3>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Aqui voce ve por que existem apenas {stats.enabled} fontes ativas,
+                  quais estao pendentes e o que precisa configurar antes de colocar
+                  uma nova fonte na varredura massiva.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <SourceStat label="Total" value={stats.total} />
+            <SourceStat label="Ativas" value={stats.enabled} tone="success" />
+            <SourceStat label="Inativas" value={stats.disabled} tone="muted" />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-sm font-semibold text-slate-950 dark:text-white">
+              Como ativar uma fonte
+            </p>
+            <ol className="mt-3 space-y-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              {(activationHelp?.steps ?? [
+                "Verifique as pendencias da fonte.",
+                "Configure as credenciais no .env ou GitHub Secrets.",
+                "Ative a fonte e execute a varredura.",
+              ]).map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-sm font-semibold text-slate-950 dark:text-white">
+              Onde colocar configuracoes
+            </p>
+            <div className="mt-3 grid gap-2 text-sm text-slate-600 dark:text-slate-300">
+              <ConfigLine label="Registry" value={activationHelp?.registry_path ?? "api/app/modules/ingestion/sources_registry.json"} />
+              <ConfigLine label="Ambiente" value={activationHelp?.env_file ?? ".env"} />
+              <ConfigLine label="Exemplo" value={activationHelp?.env_example ?? ".env.example"} />
+            </div>
+            <div className="mt-4 rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                GitHub Secrets esperados
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(activationHelp?.github_secrets ?? ["CGU_API_KEY", "OPENAI_API_KEY", "GOOGLE_CLIENT_ID"]).map((secret) => (
+                  <span
+                    className="rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    key={secret}
+                  >
+                    {secret}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {activationHelp?.production_note ??
+                "Em Docker/CI, versionar o registry atualizado para tornar a mudanca permanente."}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Buscar por chave, nome, categoria, URL..."
+              value={search}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["all", "enabled", "disabled"] as const).map((item) => (
+              <button
+                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                  filter === item
+                    ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                    : "border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                }`}
+                key={item}
+                onClick={() => onFilterChange(item)}
+                type="button"
+              >
+                {item === "all" ? "Todas" : item === "enabled" ? "Ativas" : "Inativas"}
+              </button>
+            ))}
+            <button
+              className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              disabled={sourcesLoading}
+              onClick={onRefresh}
+              type="button"
+            >
+              <RefreshCw className={`h-4 w-4 ${sourcesLoading ? "animate-spin" : ""}`} />
+              Atualizar fontes
+            </button>
+          </div>
+        </div>
+
+        {sourcesError ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            {sourcesError}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="max-h-[560px] overflow-y-auto">
+        {sourcesLoading && visibleSources.length === 0 ? (
+          <div className="space-y-3 p-5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                className="h-24 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-900"
+                key={index}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {visibleSources.map((source) => (
+              <SourceRow
+                key={source.key}
+                onToggle={() => onToggleSource(source)}
+                source={source}
+                updating={updatingSourceKey === source.key}
+              />
+            ))}
+            {!visibleSources.length ? (
+              <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                Nenhuma fonte encontrada neste filtro.
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SourceRow({
+  onToggle,
+  source,
+  updating,
+}: {
+  onToggle: () => void;
+  source: IngestionSourceOption;
+  updating: boolean;
+}) {
+  const canActivate = source.enabled || source.can_enable;
+  const notes = source.activation_notes ?? [];
+  const primaryNote = notes[0] ?? "Sem pendencias registradas.";
+
+  return (
+    <article className="p-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                source.enabled
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              {source.enabled ? "Ativa" : "Inativa"}
+            </span>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {source.category}
+            </span>
+            {source.requires_token ? (
+              <span
+                className={`rounded-full px-2 py-1 text-xs font-medium ${
+                  source.has_auth_token
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+                    : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                }`}
+              >
+                {source.has_auth_token ? "Credencial OK" : `Precisa ${source.auth_env ?? "token"}`}
+              </span>
+            ) : null}
+          </div>
+          <h4 className="mt-2 text-base font-semibold text-slate-950 dark:text-white">
+            {source.name}
+          </h4>
+          <p className="mt-1 font-mono text-xs text-slate-500 dark:text-slate-400">
+            {source.key}
+          </p>
+          <div className="mt-3 grid gap-2 text-xs text-slate-600 dark:text-slate-300 md:grid-cols-3">
+            <ConfigLine label="Tipo" value={source.source_type} />
+            <ConfigLine label="Modelo" value={source.destination_model} />
+            <ConfigLine label="Auth" value={source.auth_env ?? "sem chave"} />
+          </div>
+          <p className="mt-3 truncate text-xs text-slate-500 dark:text-slate-400">
+            {source.base_url}
+          </p>
+          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+            <p className="font-semibold text-slate-800 dark:text-slate-100">
+              Pendencias / orientacao
+            </p>
+            <p className="mt-1">{primaryNote}</p>
+            {notes.length > 1 ? (
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                {notes.slice(1).map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 xl:w-44">
+          <button
+            className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              source.enabled
+                ? "border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                : "bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
+            disabled={updating || !canActivate}
+            onClick={onToggle}
+            type="button"
+          >
+            {updating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Power className="h-4 w-4" />
+            )}
+            {source.enabled ? "Desativar" : "Ativar"}
+          </button>
+          {!canActivate ? (
+            <p className="text-xs leading-5 text-amber-700 dark:text-amber-300">
+              Resolva as pendencias antes de ativar.
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SourceStat({
+  label,
+  tone = "default",
+  value,
+}: {
+  label: string;
+  tone?: "default" | "success" | "muted";
+  value: number;
+}) {
+  const className =
+    tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+      : tone === "muted"
+        ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+        : "border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-white";
+  return (
+    <div className={`rounded-md border px-4 py-3 text-center ${className}`}>
+      <p className="text-xl font-semibold">{value}</p>
+      <p className="mt-1 text-xs font-medium opacity-75">{label}</p>
+    </div>
+  );
+}
+
+function ConfigLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
+      <p className="truncate font-mono text-xs text-slate-700 dark:text-slate-200">
+        {value}
+      </p>
+    </div>
   );
 }
 

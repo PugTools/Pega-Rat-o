@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import redis
@@ -11,8 +12,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.cache import redis_client
 from app.core.celery_app import celery_app
+from app.core.config import settings
 from app.db.database import engine
-from app.modules.ingestion.base_government_connector import load_sources_registry
+from app.modules.ingestion.base_government_connector import REGISTRY_PATH, SourceConfig, load_sources_registry
 from app.modules.auth.auth_service import get_current_user
 from app.modules.workers.ingestion_tasks import SOURCE_ALIASES, run_massive_ingestion
 
@@ -24,11 +26,21 @@ class MassiveIngestionRequest(BaseModel):
     source_key: str = Field(default="all", min_length=2, max_length=120)
 
 
+class SourceActivationRequest(BaseModel):
+    enabled: bool
+
+
 @router.get("/ingestion/sources")
 def list_massive_ingestion_sources(
     current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     registry = load_sources_registry()
+    raw_registry = _load_raw_sources_registry()
+    raw_by_key = {
+        str(source.get("key")): source
+        for source in raw_registry.get("sources", [])
+        if source.get("key")
+    }
     items = [
         {
             "key": "all",
@@ -37,17 +49,20 @@ def list_massive_ingestion_sources(
             "source_type": "batch",
             "destination_model": "mixed",
             "base_url": "sources_registry.json",
+            "category": "operacional",
+            "auth_env": None,
+            "auth_header": None,
+            "requires_token": False,
+            "has_auth_token": True,
+            "can_enable": False,
+            "activation_notes": [
+                "Executa todas as fontes marcadas como enabled=true no registry."
+            ],
+            "endpoints": {},
         }
     ]
     items.extend(
-        {
-            "key": key,
-            "name": config.name,
-            "enabled": config.enabled,
-            "source_type": config.source_type,
-            "destination_model": config.destination_model.rsplit(".", 1)[-1],
-            "base_url": config.base_url,
-        }
+        _source_payload(key=key, config=config, raw_source=raw_by_key.get(key, {}))
         for key, config in sorted(
             registry.items(),
             key=lambda item: (not item[1].enabled, item[0]),
@@ -59,6 +74,87 @@ def list_massive_ingestion_sources(
         "total": len(registry),
         "enabled": sum(1 for source in registry.values() if source.enabled),
         "items": items,
+        "activation_help": _activation_help(),
+    }
+
+
+@router.patch("/ingestion/sources/{source_key}")
+def update_ingestion_source_activation(
+    source_key: str,
+    payload: SourceActivationRequest,
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    normalized_key = source_key.strip().lower()
+    if normalized_key == "all":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A opcao 'all' e operacional e nao pode ser ativada/desativada.",
+        )
+
+    raw_registry = _load_raw_sources_registry()
+    raw_sources = raw_registry.get("sources", [])
+    source_index = next(
+        (
+            index
+            for index, source in enumerate(raw_sources)
+            if str(source.get("key", "")).lower() == normalized_key
+        ),
+        None,
+    )
+    if source_index is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Fonte nao registrada: {source_key}",
+        )
+
+    registry = load_sources_registry()
+    config = registry.get(normalized_key)
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Fonte nao carregada pelo registry: {source_key}",
+        )
+
+    readiness = _source_readiness(raw_sources[source_index], config)
+    if payload.enabled and not readiness["can_enable"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Fonte ainda nao esta pronta para ativacao segura.",
+                "notes": readiness["activation_notes"],
+                "required_env": readiness["auth_env"],
+                "registry_path": _display_registry_path(),
+            },
+        )
+
+    raw_sources[source_index]["enabled"] = payload.enabled
+    raw_registry["sources"] = raw_sources
+    _write_raw_sources_registry(raw_registry)
+
+    updated_registry = load_sources_registry()
+    updated_config = updated_registry[normalized_key]
+    updated_raw = raw_sources[source_index]
+    _record_admin_task_submission(
+        task_id=f"source-toggle-{normalized_key}-{int(datetime.now(timezone.utc).timestamp())}",
+        job="source_activation",
+        title="Configuracao de fonte alterada",
+        requested_by=current_user["email"],
+        metadata={"source_key": normalized_key, "enabled": payload.enabled},
+    )
+    return {
+        "status": "success",
+        "requested_by": current_user["email"],
+        "message": (
+            "Fonte ativada. Ela entrara na opcao 'all' e no dropdown de execucao."
+            if payload.enabled
+            else "Fonte desativada. Ela nao sera executada na varredura 'all'."
+        ),
+        "source": _source_payload(
+            key=normalized_key,
+            config=updated_config,
+            raw_source=updated_raw,
+        ),
+        "activation_help": _activation_help(),
     }
 
 
@@ -164,6 +260,144 @@ def _api_health() -> dict[str, Any]:
         "message": "FastAPI online e respondendo.",
         "technical_details": {"component": "fastapi"},
     }
+
+
+def _load_raw_sources_registry() -> dict[str, Any]:
+    try:
+        return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Nao foi possivel ler sources_registry.json: {exc}",
+        ) from exc
+
+
+def _write_raw_sources_registry(payload: dict[str, Any]) -> None:
+    try:
+        REGISTRY_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Nao foi possivel gravar sources_registry.json: {exc}",
+        ) from exc
+
+
+def _source_payload(
+    key: str,
+    config: SourceConfig,
+    raw_source: dict[str, Any],
+) -> dict[str, Any]:
+    readiness = _source_readiness(raw_source, config)
+    return {
+        "key": key,
+        "name": config.name,
+        "enabled": config.enabled,
+        "source_type": config.source_type,
+        "destination_model": config.destination_model.rsplit(".", 1)[-1],
+        "base_url": config.base_url,
+        "category": raw_source.get("category") or "sem_categoria",
+        "auth_env": readiness["auth_env"],
+        "auth_header": config.auth_header or raw_source.get("auth_header"),
+        "requires_token": readiness["requires_token"],
+        "has_auth_token": readiness["has_auth_token"],
+        "can_enable": readiness["can_enable"],
+        "activation_notes": readiness["activation_notes"],
+        "endpoints": config.endpoints,
+    }
+
+
+def _source_readiness(
+    raw_source: dict[str, Any],
+    config: SourceConfig,
+) -> dict[str, Any]:
+    auth_env = config.auth_env or raw_source.get("auth_env")
+    requires_token = bool(raw_source.get("requires_token") or auth_env)
+    has_auth_token = True
+    activation_notes: list[str] = []
+
+    if requires_token and auth_env:
+        has_auth_token = bool(getattr(settings, str(auth_env), ""))
+        if has_auth_token:
+            activation_notes.append(f"Credencial {auth_env} detectada no ambiente.")
+        else:
+            activation_notes.append(
+                f"Configure {auth_env} no .env, no docker-compose ou em GitHub Secrets antes de ativar."
+            )
+    elif raw_source.get("requires_token") and not auth_env:
+        has_auth_token = False
+        activation_notes.append(
+            "Esta fonte foi marcada como requires_token=true, mas ainda nao possui auth_env/auth_header no registry."
+        )
+
+    if config.source_type == "json" and _looks_like_catalog_endpoint(config):
+        activation_notes.append(
+            "Fonte de catalogo: o conector le metadados de datasets. Para ingerir arquivos internos, crie um transformador especifico."
+        )
+
+    if "{id}" in json.dumps(config.endpoints) or "{municipio}" in json.dumps(config.endpoints):
+        activation_notes.append(
+            "Endpoint possui parametros de caminho. Use somente apos definir valores padrao ou conector especifico."
+        )
+
+    if not activation_notes:
+        activation_notes.append("Fonte pronta para ativacao operacional.")
+
+    path_params_pending = "{id}" in json.dumps(config.endpoints) or "{municipio}" in json.dumps(config.endpoints)
+    can_enable = has_auth_token and not path_params_pending
+    return {
+        "auth_env": auth_env,
+        "requires_token": requires_token,
+        "has_auth_token": has_auth_token,
+        "can_enable": can_enable,
+        "activation_notes": activation_notes,
+    }
+
+
+def _looks_like_catalog_endpoint(config: SourceConfig) -> bool:
+    endpoint_text = " ".join(config.endpoints.values()).lower()
+    return (
+        "package_search" in endpoint_text
+        or "swagger" in endpoint_text
+        or endpoint_text.endswith("/docs")
+    )
+
+
+def _activation_help() -> dict[str, Any]:
+    return {
+        "registry_path": _display_registry_path(),
+        "env_file": ".env",
+        "env_example": ".env.example",
+        "github_secrets": [
+            "CGU_API_KEY",
+            "PORTAL_TRANSPARENCIA_API_KEY",
+            "OPENAI_API_KEY",
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+            "GOVBR_CLIENT_ID",
+        ],
+        "steps": [
+            "1. Verifique a coluna 'Pendencias' da fonte desejada.",
+            "2. Se pedir credencial, coloque a chave no .env local, no docker-compose ou em GitHub Secrets com o mesmo nome exibido.",
+            "3. Ative a fonte no painel. A alteracao grava o campo enabled em sources_registry.json.",
+            "4. Execute 'Iniciar Varredura' com a fonte especifica ou escolha 'Todas as fontes habilitadas'.",
+            "5. Acompanhe o Monitor de Logs para validar se houve erro de credencial, endpoint ou parser.",
+        ],
+        "production_note": (
+            "Em Docker/CI, alteracoes feitas pelo painel podem ser temporarias se o container for recriado. "
+            "Para tornar permanente, versionar o sources_registry.json atualizado no repositorio."
+        ),
+    }
+
+
+def _display_registry_path() -> str:
+    try:
+        project_root = Path(__file__).resolve().parents[4]
+        return str(REGISTRY_PATH.relative_to(project_root))
+    except ValueError:
+        return str(REGISTRY_PATH)
 
 
 def _postgres_health() -> dict[str, Any]:
