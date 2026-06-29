@@ -110,18 +110,22 @@ def register_user(
 
 
 def authenticate_user(db: Session, email: str, password: str) -> dict[str, Any]:
-    user = _get_user_by_email(db, email.lower().strip())
+    normalized_email = email.lower().strip()
+    user = _get_user_by_email(db, normalized_email)
     if user is None or not verify_password(password, user.password_hash):
+        logger.warning("login_failed_invalid_credentials: %s", normalized_email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.active:
+        logger.warning("login_failed_inactive_user: %s", normalized_email)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user.",
         )
+    logger.warning("login_success: %s", normalized_email)
     return user_to_claims(user)
 
 
@@ -223,7 +227,11 @@ def ensure_system_roles(db: Session) -> None:
 def ensure_bootstrap_admin(db: Session) -> None:
     email = settings.ADMIN_BOOTSTRAP_EMAIL.strip().lower()
     password = settings.ADMIN_BOOTSTRAP_PASSWORD.strip()
-    if not email or not password:
+    if not email:
+        logger.warning("bootstrap_admin_skipped: ADMIN_BOOTSTRAP_EMAIL is empty")
+        return
+    if not password:
+        logger.warning("bootstrap_admin_skipped: ADMIN_BOOTSTRAP_PASSWORD is empty for %s", email)
         return
 
     ensure_system_roles(db)
