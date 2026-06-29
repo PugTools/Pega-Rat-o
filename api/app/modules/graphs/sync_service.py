@@ -241,40 +241,13 @@ class GraphSyncService:
         depth: int = 2,
     ) -> dict[str, list[dict[str, Any]]]:
         label = _safe_label(entity_type)
-        if label is None:
+        safe_entity_id = _safe_entity_id(entity_id)
+        if label is None or safe_entity_id is None:
             return {"nodes": [], "edges": []}
 
         rows = self.connection.execute_query(
-            f"""
-            MATCH path = (root:{label} {{id: $entity_id}})-[*0..{depth}]-(neighbor)
-            WITH collect(path) AS paths
-            CALL {{
-                WITH paths
-                UNWIND paths AS p
-                UNWIND nodes(p) AS n
-                RETURN collect(DISTINCT n) AS ns
-            }}
-            CALL {{
-                WITH paths
-                UNWIND paths AS p
-                UNWIND relationships(p) AS r
-                RETURN collect(DISTINCT r) AS rs
-            }}
-            RETURN
-                [n IN ns | {{
-                    id: n.id,
-                    label: labels(n)[0],
-                    properties: properties(n)
-                }}] AS nodes,
-                [r IN rs | {{
-                    id: elementId(r),
-                    source: startNode(r).id,
-                    target: endNode(r).id,
-                    type: type(r),
-                    properties: properties(r)
-                }}] AS edges
-            """,
-            {"entity_id": entity_id},
+            _neighborhood_query(depth),
+            {"entity_id": safe_entity_id, "label": label},
         )
 
         if not rows:
@@ -304,3 +277,76 @@ def _safe_label(entity_type: str) -> str | None:
         "citedentities": "CitedEntity",
     }
     return labels.get(entity_type.lower())
+
+
+def _safe_entity_id(entity_id: str) -> str | None:
+    value = str(entity_id or "").strip()
+    if not value or len(value) > 160:
+        return None
+    return value
+
+
+def _neighborhood_query(depth: int) -> str:
+    if depth <= 1:
+        return """
+        MATCH (root {id: $entity_id})
+        WHERE $label IN labels(root)
+        MATCH path = (root)-[*0..1]-(neighbor)
+        WITH collect(path) AS paths
+        CALL {
+            WITH paths
+            UNWIND paths AS p
+            UNWIND nodes(p) AS n
+            RETURN collect(DISTINCT n) AS ns
+        }
+        CALL {
+            WITH paths
+            UNWIND paths AS p
+            UNWIND relationships(p) AS r
+            RETURN collect(DISTINCT r) AS rs
+        }
+        RETURN
+            [n IN ns | {
+                id: n.id,
+                label: labels(n)[0],
+                properties: properties(n)
+            }] AS nodes,
+            [r IN rs | {
+                id: elementId(r),
+                source: startNode(r).id,
+                target: endNode(r).id,
+                type: type(r),
+                properties: properties(r)
+            }] AS edges
+        """
+    return """
+    MATCH (root {id: $entity_id})
+    WHERE $label IN labels(root)
+    MATCH path = (root)-[*0..2]-(neighbor)
+    WITH collect(path) AS paths
+    CALL {
+        WITH paths
+        UNWIND paths AS p
+        UNWIND nodes(p) AS n
+        RETURN collect(DISTINCT n) AS ns
+    }
+    CALL {
+        WITH paths
+        UNWIND paths AS p
+        UNWIND relationships(p) AS r
+        RETURN collect(DISTINCT r) AS rs
+    }
+    RETURN
+        [n IN ns | {
+            id: n.id,
+            label: labels(n)[0],
+            properties: properties(n)
+        }] AS nodes,
+        [r IN rs | {
+            id: elementId(r),
+            source: startNode(r).id,
+            target: endNode(r).id,
+            type: type(r),
+            properties: properties(r)
+        }] AS edges
+    """

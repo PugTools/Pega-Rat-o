@@ -2,14 +2,19 @@ from urllib.parse import urlencode
 
 import httpx
 from pydantic import BaseModel, EmailStr, Field
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.database import get_db
 from app.modules.auth.auth_service import (
     authenticate_user,
+    clear_auth_cookie,
     create_access_token,
-    fake_users_db,
+    get_current_user,
     register_user,
+    set_auth_cookie,
+    user_to_claims,
 )
 
 
@@ -28,9 +33,11 @@ class LoginRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
+    id: str | None = None
     email: EmailStr
     name: str
     active: bool
+    roles: list[str] = Field(default_factory=list)
 
 
 class TokenResponse(BaseModel):
@@ -63,24 +70,43 @@ def _setting_value(name: str, fallback: str = "") -> str:
 
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(payload: UserCreate) -> dict:
+def create_user(payload: UserCreate, db: Session = Depends(get_db)) -> dict:
     user = register_user(
+        db=db,
         email=str(payload.email),
         password=payload.password,
         name=payload.name,
     )
-    return {
-        "email": user["email"],
-        "name": user["name"],
-        "active": user["active"],
-    }
+    return user
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest) -> TokenResponse:
-    user = authenticate_user(str(payload.email), payload.password)
-    token = create_access_token(subject=user["email"], extra_claims={"name": user["name"]})
+def login(
+    payload: LoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    user = authenticate_user(db, str(payload.email), payload.password)
+    token = create_access_token(
+        subject=user["email"],
+        extra_claims={
+            "name": user["name"],
+            "roles": user.get("roles", []),
+        },
+    )
+    set_auth_cookie(response, token)
     return TokenResponse(access_token=token)
+
+
+@router.post("/logout")
+def logout(response: Response) -> dict[str, str]:
+    clear_auth_cookie(response)
+    return {"status": "success"}
+
+
+@router.get("/me", response_model=UserResponse)
+def me(current_user: dict = Depends(get_current_user)) -> dict:
+    return current_user
 
 
 @router.get("/oauth/{provider}/authorize")
@@ -107,7 +133,13 @@ def oauth_authorize(provider: str) -> dict[str, str]:
 
 
 @router.get("/oauth/{provider}/callback", response_model=TokenResponse)
-def oauth_callback(provider: str, code: str | None = None, state: str | None = None) -> TokenResponse:
+def oauth_callback(
+    provider: str,
+    response: Response,
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
     config = OAUTH_PROVIDERS.get(provider)
     if config is None:
         raise HTTPException(status_code=404, detail="OAuth provider not configured.")
@@ -115,10 +147,38 @@ def oauth_callback(provider: str, code: str | None = None, state: str | None = N
         raise HTTPException(status_code=400, detail="Missing OAuth authorization code.")
 
     email = _resolve_oauth_email(provider, config, code)
-    if email not in fake_users_db:
-        register_user(email=email, password=f"{provider}-oauth-placeholder", name=f"{provider} OAuth User")
-    token = create_access_token(subject=email, extra_claims={"provider": provider, "state": state})
+    user = _get_or_create_oauth_user(
+        db=db,
+        email=email,
+        provider=provider,
+    )
+    token = create_access_token(
+        subject=email,
+        extra_claims={
+            "provider": provider,
+            "state": state,
+            "roles": user.get("roles", []),
+        },
+    )
+    set_auth_cookie(response, token)
     return TokenResponse(access_token=token)
+
+
+def _get_or_create_oauth_user(db: Session, email: str, provider: str) -> dict:
+    try:
+        return register_user(
+            db=db,
+            email=email,
+            password=f"{provider}-oauth-placeholder",
+            name=f"{provider} OAuth User",
+        )
+    except HTTPException as exc:
+        if exc.status_code != status.HTTP_409_CONFLICT:
+            raise
+    from app.db.models import User
+
+    user = db.query(User).filter(User.email == email.lower().strip()).one()
+    return user_to_claims(user)
 
 
 def _resolve_oauth_email(provider: str, config: dict[str, str], code: str) -> str:

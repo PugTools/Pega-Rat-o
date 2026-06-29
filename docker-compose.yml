@@ -95,6 +95,7 @@ services:
     container_name: ongp-api
     restart: unless-stopped
     environment:
+      APP_ENV: ${APP_ENV:-development}
       DB_URL: postgresql+psycopg://ongp_user:ongp_password@postgres:5432/ongp
       DATABASE_URL: postgresql+psycopg://ongp_user:ongp_password@postgres:5432/ongp
       REDIS_URL: redis://redis:6379/0
@@ -106,9 +107,17 @@ services:
       HTTP_VERIFY_SSL: ${HTTP_VERIFY_SSL:-true}
       CGU_API_KEY: ${CGU_API_KEY:-}
       PORTAL_TRANSPARENCIA_API_KEY: ${PORTAL_TRANSPARENCIA_API_KEY:-}
-      JWT_SECRET_KEY: ongp-change-me-in-production
-      JWT_ALGORITHM: HS256
-      JWT_EXPIRE_MINUTES: 60
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-ongp-change-me-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-ongp_token}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      SYSTEM_ADMIN_EMAILS: ${SYSTEM_ADMIN_EMAILS:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ALLOWED_ORIGIN_REGEX: ${CORS_ALLOWED_ORIGIN_REGEX:-https://.*\.(app\.github\.dev|githubpreview\.dev)}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-2000000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -133,6 +142,7 @@ services:
     restart: unless-stopped
     command: celery -A app.core.celery_app worker --loglevel=INFO
     environment:
+      APP_ENV: ${APP_ENV:-development}
       DB_URL: postgresql+psycopg://ongp_user:ongp_password@postgres:5432/ongp
       DATABASE_URL: postgresql+psycopg://ongp_user:ongp_password@postgres:5432/ongp
       REDIS_URL: redis://redis:6379/0
@@ -144,9 +154,15 @@ services:
       HTTP_VERIFY_SSL: ${HTTP_VERIFY_SSL:-true}
       CGU_API_KEY: ${CGU_API_KEY:-}
       PORTAL_TRANSPARENCIA_API_KEY: ${PORTAL_TRANSPARENCIA_API_KEY:-}
-      JWT_SECRET_KEY: ongp-change-me-in-production
-      JWT_ALGORITHM: HS256
-      JWT_EXPIRE_MINUTES: 60
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-ongp-change-me-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-ongp_token}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      SYSTEM_ADMIN_EMAILS: ${SYSTEM_ADMIN_EMAILS:-}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-2000000}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -170,6 +186,7 @@ services:
     environment:
       NEXT_PUBLIC_API_BASE_URL: /api/backend
       INTERNAL_API_BASE_URL: http://api:8000/api/v1
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-ongp-change-me-in-production}
     ports:
       - "3000:3000"
     depends_on:

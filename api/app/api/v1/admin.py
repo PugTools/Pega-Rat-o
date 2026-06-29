@@ -15,11 +15,12 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.database import engine
 from app.modules.ingestion.base_government_connector import REGISTRY_PATH, SourceConfig, load_sources_registry
-from app.modules.auth.auth_service import get_current_user
+from app.modules.auth.auth_service import get_current_user, require_any_role
 from app.modules.workers.ingestion_tasks import SOURCE_ALIASES, run_massive_ingestion
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+INGESTION_ADMIN_ROLES = {"system_admin", "source_admin"}
 
 
 class MassiveIngestionRequest(BaseModel):
@@ -30,9 +31,15 @@ class SourceActivationRequest(BaseModel):
     enabled: bool
 
 
+def _require_ingestion_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    return require_any_role(current_user, INGESTION_ADMIN_ROLES)
+
+
 @router.get("/ingestion/sources")
 def list_massive_ingestion_sources(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_ingestion_admin),
 ) -> dict[str, Any]:
     registry = load_sources_registry()
     raw_registry = _load_raw_sources_registry()
@@ -82,7 +89,7 @@ def list_massive_ingestion_sources(
 def update_ingestion_source_activation(
     source_key: str,
     payload: SourceActivationRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_ingestion_admin),
 ) -> dict[str, Any]:
     normalized_key = source_key.strip().lower()
     if normalized_key == "all":
@@ -159,7 +166,9 @@ def update_ingestion_source_activation(
 
 
 @router.get("/system-health")
-def get_system_health(current_user: dict = Depends(get_current_user)) -> dict[str, Any]:
+def get_system_health(
+    current_user: dict = Depends(_require_ingestion_admin),
+) -> dict[str, Any]:
     services = [
         _api_health(),
         _postgres_health(),
@@ -186,7 +195,7 @@ def get_system_health(current_user: dict = Depends(get_current_user)) -> dict[st
 
 @router.get("/system-logs")
 def get_system_logs(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_ingestion_admin),
     limit: int = Query(default=25, ge=1, le=100),
 ) -> dict[str, Any]:
     logs = _read_task_logs(limit=limit)
@@ -216,7 +225,7 @@ def get_system_logs(
 @router.post("/ingestion/run", status_code=status.HTTP_202_ACCEPTED)
 def trigger_massive_ingestion(
     payload: MassiveIngestionRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_ingestion_admin),
 ) -> dict[str, Any]:
     requested_source_key = payload.source_key.strip().lower()
     source_key = SOURCE_ALIASES.get(requested_source_key, requested_source_key)

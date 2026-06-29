@@ -5,7 +5,6 @@ const rawApiBaseUrl =
       "http://127.0.0.1:8000/api/v1"
     : process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/backend";
 const API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl);
-const MOCK_AUTH_TOKEN = "mock-token-ongp";
 
 export type Company = {
   id: string;
@@ -301,12 +300,13 @@ function absoluteUrlOrUndefined(value: string | undefined): string | undefined {
     : undefined;
 }
 
-function getAuthToken(): string {
-  if (typeof window === "undefined") {
-    return process.env.ONGP_API_TOKEN ?? MOCK_AUTH_TOKEN;
+function getAuthHeaders(): HeadersInit {
+  if (typeof window !== "undefined") {
+    return {};
   }
 
-  return window.localStorage.getItem("ongp_token") || MOCK_AUTH_TOKEN;
+  const serverToken = process.env.ONGP_API_TOKEN;
+  return serverToken ? { Authorization: `Bearer ${serverToken}` } : {};
 }
 
 function normalizePerson(item: Person): Person {
@@ -343,15 +343,16 @@ async function parseErrorPayload(response: Response): Promise<ApiErrorPayload | 
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getAuthToken();
+  const authHeaders = getAuthHeaders();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      ...authHeaders,
       ...(init?.headers ?? {}),
     },
+    credentials: "include",
     cache: "no-store",
     signal: init?.signal,
   });

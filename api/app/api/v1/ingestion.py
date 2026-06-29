@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import redis_client
 from app.db.database import get_db
-from app.modules.auth.auth_service import get_current_user
+from app.modules.auth.auth_service import get_current_user, require_any_role
 from app.modules.ingestion.pipeline import IngestionPipeline
 from app.modules.ingestion.political_transparency import PoliticalTransparencyIngestion
 from app.workers.ingestion_tasks import (
@@ -17,11 +17,18 @@ from app.workers.ingestion_tasks import (
 
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
+INGESTION_ROLES = {"system_admin", "source_admin"}
+
+
+def _require_ingestion_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    return require_any_role(current_user, INGESTION_ROLES)
 
 
 @router.post("/run", status_code=status.HTTP_202_ACCEPTED)
 def trigger_daily_ingestion(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_ingestion_admin),
     db: Session = Depends(get_db),
     data_inicio: date | None = None,
     data_fim: date | None = None,
@@ -122,7 +129,7 @@ def _run_daily_ingestion_now(
 
 @router.post("/politicians/run")
 def trigger_political_ingestion(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_ingestion_admin),
     db: Session = Depends(get_db),
     pagina: int = Query(default=1, ge=1),
     itens: int = Query(default=100, ge=1, le=100),

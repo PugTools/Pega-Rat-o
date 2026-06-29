@@ -14,6 +14,7 @@ def find_cross_nepotism(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     graph = connection or neo4j_connection
+    safe_limit = _safe_limit(limit)
     rows = graph.execute_query(
         """
         MATCH (politician:Person)-[:OCCUPIES]->(role:PublicRole)
@@ -59,7 +60,7 @@ def find_cross_nepotism(
         ORDER BY target_value DESC
         LIMIT $limit
         """,
-        {"limit": limit},
+        {"limit": safe_limit},
     )
 
     return [
@@ -88,6 +89,8 @@ def find_campaign_donor_winners(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     graph = connection or neo4j_connection
+    safe_limit = _safe_limit(limit)
+    safe_min_contract_value = _safe_amount(min_contract_value)
     rows = graph.execute_query(
         """
         MATCH (donor:Donor)-[donation:DOOU_PARA]->(politician:Person)
@@ -133,7 +136,7 @@ def find_campaign_donor_winners(
         ORDER BY contract_value DESC, donation_amount DESC
         LIMIT $limit
         """,
-        {"min_contract_value": min_contract_value, "limit": limit},
+        {"min_contract_value": safe_min_contract_value, "limit": safe_limit},
     )
 
     return [
@@ -162,6 +165,8 @@ def find_enforced_supplier_winners(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     graph = connection or neo4j_connection
+    safe_limit = _safe_limit(limit)
+    safe_min_contract_value = _safe_amount(min_contract_value)
     rows = graph.execute_query(
         """
         MATCH (company:Company)-[:AUTUADO_POR]->(action:EnforcementAction)
@@ -187,7 +192,7 @@ def find_enforced_supplier_winners(
         ORDER BY contract_value DESC
         LIMIT $limit
         """,
-        {"min_contract_value": min_contract_value, "limit": limit},
+        {"min_contract_value": safe_min_contract_value, "limit": safe_limit},
     )
 
     return [
@@ -230,3 +235,19 @@ def run_graph_audit_suite(
                 },
             )
     return alerts
+
+
+def _safe_limit(value: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 100
+    return max(1, min(parsed, 500))
+
+
+def _safe_amount(value: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(parsed, 1_000_000_000_000.0))

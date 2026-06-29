@@ -11,10 +11,17 @@ from sqlalchemy.orm import Session
 from app.core.audit import log_audit
 from app.db.database import get_db
 from app.db.models import RiskAlert
-from app.modules.auth.auth_service import get_current_user
+from app.modules.auth.auth_service import get_current_user, require_any_role
 
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+REPORT_EXPORT_ROLES = {"system_admin", "source_admin", "auditor", "compliance_officer"}
+
+
+def _require_report_exporter(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    return require_any_role(current_user, REPORT_EXPORT_ROLES)
 
 
 @router.get("/alerts.csv")
@@ -22,7 +29,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 def export_alerts_csv(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_report_exporter),
 ) -> StreamingResponse:
     alerts = _query_alerts(db)
     buffer = io.StringIO()
@@ -52,7 +59,7 @@ def export_alerts_csv(
 def export_alerts_pdf(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(_require_report_exporter),
 ) -> StreamingResponse:
     alerts = _query_alerts(db)
     buffer = io.BytesIO()

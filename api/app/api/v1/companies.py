@@ -6,10 +6,18 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import Company
+from app.modules.auth.auth_service import get_current_user, require_any_role
 from app.schemas.core_schemas import CompanyCreate, CompanyResponse, CompanyUpdate
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])
+COMPANY_MUTATION_ROLES = {"system_admin", "source_admin"}
+
+
+def _require_company_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    return require_any_role(current_user, COMPANY_MUTATION_ROLES)
 
 
 @router.post(
@@ -17,7 +25,11 @@ router = APIRouter(prefix="/companies", tags=["companies"])
     response_model=CompanyResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_company(payload: CompanyCreate, db: Session = Depends(get_db)) -> Company:
+def create_company(
+    payload: CompanyCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_company_admin),
+) -> Company:
     company = Company(**payload.model_dump())
     db.add(company)
 
@@ -69,6 +81,7 @@ def update_company(
     company_id: UUID,
     payload: CompanyUpdate,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_company_admin),
 ) -> Company:
     company = db.get(Company, company_id)
     if company is None:
@@ -94,7 +107,11 @@ def update_company(
 
 
 @router.delete("/{company_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_company(company_id: UUID, db: Session = Depends(get_db)) -> None:
+def delete_company(
+    company_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_company_admin),
+) -> None:
     company = db.get(Company, company_id)
     if company is None:
         raise HTTPException(

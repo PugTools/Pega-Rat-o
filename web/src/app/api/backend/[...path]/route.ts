@@ -35,7 +35,12 @@ async function proxyToBackend(request: Request, context: RouteContext) {
 
   const headers = forwardedHeaders(request.headers);
   if (!headers.has("authorization")) {
-    headers.set("authorization", DEFAULT_AUTH_HEADER);
+    const cookieToken = tokenFromCookieHeader(request.headers.get("cookie"));
+    if (cookieToken) {
+      headers.set("authorization", `Bearer ${cookieToken}`);
+    } else if (process.env.NODE_ENV !== "production") {
+      headers.set("authorization", DEFAULT_AUTH_HEADER);
+    }
   }
 
   let response: Response;
@@ -67,6 +72,24 @@ async function proxyToBackend(request: Request, context: RouteContext) {
     statusText: response.statusText,
     headers: responseHeaders,
   });
+}
+
+function tokenFromCookieHeader(cookieHeader: string | null) {
+  if (!cookieHeader) {
+    return null;
+  }
+  const cookies = cookieHeader
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  for (const name of ["ongp_token", "access_token", "token"]) {
+    const prefix = `${name}=`;
+    const found = cookies.find((cookie) => cookie.startsWith(prefix));
+    if (found) {
+      return decodeURIComponent(found.slice(prefix.length));
+    }
+  }
+  return null;
 }
 
 function normalizeApiBaseUrl(value: string) {
