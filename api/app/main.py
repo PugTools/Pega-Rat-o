@@ -106,6 +106,7 @@ async def request_abuse_guard_middleware(request: Request, call_next):
     if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
         origin = request.headers.get("origin")
         if origin and not _origin_allowed(origin):
+            logger.warning("origin_not_allowed: %s", origin)
             return JSONResponse(status_code=403, content={"detail": "Origin not allowed."})
 
     return await call_next(request)

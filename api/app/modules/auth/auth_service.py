@@ -239,7 +239,7 @@ def ensure_bootstrap_admin(db: Session) -> None:
         )
         db.add(user)
         db.commit()
-        logger.info("bootstrap_admin_created: %s", email)
+        logger.warning("bootstrap_admin_created: %s", email)
         return
 
     existing_roles = {role.name for role in user.roles}
@@ -250,7 +250,7 @@ def ensure_bootstrap_admin(db: Session) -> None:
     if settings.ADMIN_BOOTSTRAP_RESET_PASSWORD:
         user.password_hash = hash_password(password)
     db.commit()
-    logger.info("bootstrap_admin_verified: %s", email)
+    logger.warning("bootstrap_admin_verified: %s", email)
 
 
 def _resolve_token(
