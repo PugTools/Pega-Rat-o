@@ -30,7 +30,7 @@ from app.core.config import settings
 from app.db import models
 from app.db.database import SessionLocal, engine
 from app.db.schema_maintenance import ensure_postgres_runtime_schema
-from app.modules.auth.auth_service import ensure_system_roles
+from app.modules.auth.auth_service import ensure_bootstrap_admin, ensure_system_roles
 from app.modules.graphs.sync_service import GraphSyncService
 
 
@@ -180,6 +180,7 @@ def on_startup() -> None:
     ensure_postgres_runtime_schema(engine)
     with SessionLocal() as db:
         ensure_system_roles(db)
+        ensure_bootstrap_admin(db)
     try:
         GraphSyncService().ensure_constraints()
     except Exception as exc:

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     SECURITY_HSTS_ENABLED: bool = True
     SECURITY_HSTS_MAX_AGE_SECONDS: int = 31536000
     SYSTEM_ADMIN_EMAILS: str = ""
+    ADMIN_BOOTSTRAP_EMAIL: str = ""
+    ADMIN_BOOTSTRAP_PASSWORD: str = ""
+    ADMIN_BOOTSTRAP_RESET_PASSWORD: bool = False
     JWT_SECRET_KEY: str = "ongp-local-dev-secret-change-me"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60

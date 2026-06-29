@@ -220,6 +220,39 @@ def ensure_system_roles(db: Session) -> None:
     db.commit()
 
 
+def ensure_bootstrap_admin(db: Session) -> None:
+    email = settings.ADMIN_BOOTSTRAP_EMAIL.strip().lower()
+    password = settings.ADMIN_BOOTSTRAP_PASSWORD
+    if not email or not password:
+        return
+
+    ensure_system_roles(db)
+    required_roles = ["system_admin", "source_admin", "auditor", "analyst"]
+    user = _get_user_by_email(db, email)
+    if user is None:
+        user = User(
+            email=email,
+            name=email,
+            password_hash=hash_password(password),
+            active=True,
+            roles=[_get_or_create_role(db, role_name) for role_name in required_roles],
+        )
+        db.add(user)
+        db.commit()
+        logger.info("bootstrap_admin_created: %s", email)
+        return
+
+    existing_roles = {role.name for role in user.roles}
+    for role_name in required_roles:
+        if role_name not in existing_roles:
+            user.roles.append(_get_or_create_role(db, role_name))
+    user.active = True
+    if settings.ADMIN_BOOTSTRAP_RESET_PASSWORD:
+        user.password_hash = hash_password(password)
+    db.commit()
+    logger.info("bootstrap_admin_verified: %s", email)
+
+
 def _resolve_token(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None,
