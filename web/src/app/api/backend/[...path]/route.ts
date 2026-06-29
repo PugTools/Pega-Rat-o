@@ -22,6 +22,10 @@ export async function PUT(request: Request, context: RouteContext) {
   return proxyToBackend(request, context);
 }
 
+export async function PATCH(request: Request, context: RouteContext) {
+  return proxyToBackend(request, context);
+}
+
 export async function DELETE(request: Request, context: RouteContext) {
   return proxyToBackend(request, context);
 }

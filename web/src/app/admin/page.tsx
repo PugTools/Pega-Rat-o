@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminCommandCenter } from "@/components/admin/AdminCommandCenter";
 import { BackofficeSettings } from "@/components/BackofficeSettings";
 import { PageHeader } from "@/components/ui/Primitives";
 
@@ -366,6 +367,8 @@ export default function AdminPage() {
         recentErrors={recentErrors}
         servicesByName={servicesByName}
       />
+
+      <AdminCommandCenter />
 
       {lastActionError ? <ActionError error={lastActionError} /> : null}
       {toastMessage ? <ToastSuccess message={toastMessage} /> : null}

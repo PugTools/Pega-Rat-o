@@ -35,6 +35,7 @@ from app.modules.graphs.sync_service import GraphSyncService
 
 
 logger = logging.getLogger(__name__)
+BLOCKED_IPS_KEY = "security:blocked_ips"
 
 app = FastAPI(
     title="ONGP - PEGA RATAO API",
@@ -89,6 +90,10 @@ async def security_headers_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def request_abuse_guard_middleware(request: Request, call_next):
+    client_ip = _client_ip(request)
+    if client_ip and _is_ip_blocked(client_ip):
+        return JSONResponse(status_code=403, content={"detail": "IP blocked by administrator."})
+
     content_length = request.headers.get("content-length")
     if content_length:
         try:
@@ -220,12 +225,7 @@ def _rate_limit_identity(request: Request) -> str:
         token_digest = sha256(authorization.encode("utf-8")).hexdigest()[:32]
         return f"token:{token_digest}"
 
-    client_host = request.client.host if request.client else "unknown"
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        first_hop = forwarded_for.split(",", 1)[0].strip()
-        if first_hop:
-            client_host = first_hop
+    client_host = _client_ip(request) or "unknown"
     return f"ip:{sha256(client_host.encode('utf-8')).hexdigest()[:32]}"
 
 
@@ -269,3 +269,20 @@ def _origin_allowed(origin: str) -> bool:
     if settings.cors_allowed_origin_regex:
         return re.fullmatch(settings.cors_allowed_origin_regex, origin) is not None
     return False
+
+
+def _client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        first_hop = forwarded_for.split(",", 1)[0].strip()
+        if first_hop:
+            return first_hop
+    return request.client.host if request.client else None
+
+
+def _is_ip_blocked(ip_address: str) -> bool:
+    try:
+        return bool(redis_client.hexists(BLOCKED_IPS_KEY, ip_address))
+    except redis.RedisError:
+        logger.warning("blocked_ip_check_redis_unavailable")
+        return False

@@ -1,26 +1,33 @@
 import json
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import redis
 from celery.result import AsyncResult
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.cache import redis_client
 from app.core.celery_app import celery_app
 from app.core.config import settings
+from app.db.database import get_db
 from app.db.database import engine
+from app.db.models import AdminSuggestion, Role, User
 from app.modules.ingestion.base_government_connector import REGISTRY_PATH, SourceConfig, load_sources_registry
-from app.modules.auth.auth_service import get_current_user, require_any_role
+from app.modules.auth.auth_service import get_current_user, hash_password, require_any_role
 from app.modules.workers.ingestion_tasks import SOURCE_ALIASES, run_massive_ingestion
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 INGESTION_ADMIN_ROLES = {"system_admin", "source_admin"}
+SYSTEM_ADMIN_ROLES = {"system_admin"}
+BLOCKED_IPS_KEY = "security:blocked_ips"
 
 
 class MassiveIngestionRequest(BaseModel):
@@ -31,10 +38,267 @@ class SourceActivationRequest(BaseModel):
     enabled: bool
 
 
+class AdminUserUpdate(BaseModel):
+    active: bool | None = None
+    roles: list[str] | None = None
+
+
+class PasswordResetRequest(BaseModel):
+    new_password: str | None = Field(default=None, min_length=10, max_length=128)
+
+
+class AdminSuggestionCreate(BaseModel):
+    title: str = Field(min_length=4, max_length=160)
+    description: str = Field(min_length=8, max_length=4000)
+    category: str = Field(default="operacional", min_length=2, max_length=80)
+    priority: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
+
+
+class AdminSuggestionUpdate(BaseModel):
+    status: str | None = Field(default=None, pattern="^(open|reviewing|planned|done|rejected)$")
+    priority: str | None = Field(default=None, pattern="^(low|medium|high|critical)$")
+    assigned_to_email: EmailStr | None = None
+
+
+class BlockIpRequest(BaseModel):
+    ip_address: str = Field(min_length=3, max_length=64)
+    reason: str = Field(default="Bloqueio manual pelo administrador.", max_length=500)
+
+
 def _require_ingestion_admin(
     current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     return require_any_role(current_user, INGESTION_ADMIN_ROLES)
+
+
+def _require_system_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    return require_any_role(current_user, SYSTEM_ADMIN_ROLES)
+
+
+@router.get("/overview")
+def get_admin_overview(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_ingestion_admin),
+) -> dict[str, Any]:
+    registry = load_sources_registry()
+    logs = _read_task_logs(limit=10)
+    blocked_ips = _read_blocked_ips()
+    return {
+        "status": "success",
+        "requested_by": current_user["email"],
+        "cards": {
+            "users": db.query(User).count(),
+            "active_users": db.query(User).filter(User.active.is_(True)).count(),
+            "open_suggestions": db.query(AdminSuggestion).filter(AdminSuggestion.status == "open").count(),
+            "blocked_ips": len(blocked_ips),
+            "sources_total": len(registry),
+            "sources_enabled": sum(1 for source in registry.values() if source.enabled),
+            "recent_errors": len([log for log in logs if log.get("status") in {"error", "warning"}]),
+        },
+        "blocked_ips": blocked_ips[:5],
+        "recent_logs": logs,
+    }
+
+
+@router.get("/users")
+def list_admin_users(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_system_admin),
+) -> dict[str, Any]:
+    users = (
+        db.query(User)
+        .options(selectinload(User.roles))
+        .order_by(User.created_at.desc())
+        .limit(500)
+        .all()
+    )
+    return {
+        "status": "success",
+        "requested_by": current_user["email"],
+        "items": [_user_payload(user) for user in users],
+    }
+
+
+@router.patch("/users/{user_id}")
+def update_admin_user(
+    user_id: UUID,
+    payload: AdminUserUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_system_admin),
+) -> dict[str, Any]:
+    user = _get_user_or_404(db, user_id)
+    if payload.active is False and str(user.id) == str(current_user.get("id")):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="O administrador nao pode desativar a propria conta.",
+        )
+    if payload.active is not None:
+        user.active = payload.active
+    if payload.roles is not None:
+        normalized_roles = sorted({role.strip() for role in payload.roles if role.strip()})
+        if not normalized_roles:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Usuario precisa manter ao menos uma role.",
+            )
+        if str(user.id) == str(current_user.get("id")) and "system_admin" not in normalized_roles:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="O administrador nao pode remover system_admin da propria conta.",
+            )
+        user.roles = [_get_or_create_role(db, role_name) for role_name in normalized_roles]
+    db.commit()
+    db.refresh(user)
+    _record_admin_task_submission(
+        task_id=f"user-update-{user.id}-{int(datetime.now(timezone.utc).timestamp())}",
+        job="user_management",
+        title="Usuario administrativo atualizado",
+        requested_by=current_user["email"],
+        metadata={"user_id": str(user.id), "email": user.email},
+    )
+    return {"status": "success", "user": _user_payload(user)}
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_admin_user_password(
+    user_id: UUID,
+    payload: PasswordResetRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_system_admin),
+) -> dict[str, Any]:
+    user = _get_user_or_404(db, user_id)
+    temporary_password = payload.new_password or _temporary_password()
+    user.password_hash = hash_password(temporary_password)
+    db.commit()
+    _record_admin_task_submission(
+        task_id=f"password-reset-{user.id}-{int(datetime.now(timezone.utc).timestamp())}",
+        job="user_management",
+        title="Senha de usuario redefinida",
+        requested_by=current_user["email"],
+        metadata={"user_id": str(user.id), "email": user.email},
+    )
+    return {
+        "status": "success",
+        "message": "Senha redefinida. Entregue a senha temporaria por canal seguro.",
+        "user_id": str(user.id),
+        "email": user.email,
+        "temporary_password": temporary_password if payload.new_password is None else None,
+    }
+
+
+@router.get("/suggestions")
+def list_admin_suggestions(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_ingestion_admin),
+    status_filter: str | None = Query(default=None, alias="status"),
+) -> dict[str, Any]:
+    query = db.query(AdminSuggestion)
+    if status_filter:
+        query = query.filter(AdminSuggestion.status == status_filter)
+    suggestions = query.order_by(AdminSuggestion.created_at.desc()).limit(200).all()
+    return {
+        "status": "success",
+        "requested_by": current_user["email"],
+        "items": [_suggestion_payload(item) for item in suggestions],
+    }
+
+
+@router.post("/suggestions", status_code=status.HTTP_201_CREATED)
+def create_admin_suggestion(
+    payload: AdminSuggestionCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_ingestion_admin),
+) -> dict[str, Any]:
+    suggestion = AdminSuggestion(
+        title=payload.title.strip(),
+        description=payload.description.strip(),
+        category=payload.category.strip().lower(),
+        priority=payload.priority,
+        status="open",
+        created_by_email=current_user["email"],
+        metadata_json={"source": "admin_panel"},
+    )
+    db.add(suggestion)
+    db.commit()
+    db.refresh(suggestion)
+    return {"status": "success", "suggestion": _suggestion_payload(suggestion)}
+
+
+@router.patch("/suggestions/{suggestion_id}")
+def update_admin_suggestion(
+    suggestion_id: UUID,
+    payload: AdminSuggestionUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(_require_ingestion_admin),
+) -> dict[str, Any]:
+    suggestion = db.get(AdminSuggestion, suggestion_id)
+    if suggestion is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sugestao nao encontrada.")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(suggestion, field, str(value) if value is not None else None)
+    db.commit()
+    db.refresh(suggestion)
+    return {"status": "success", "suggestion": _suggestion_payload(suggestion)}
+
+
+@router.get("/security/blocked-ips")
+def list_blocked_ips(
+    current_user: dict = Depends(_require_system_admin),
+) -> dict[str, Any]:
+    return {
+        "status": "success",
+        "requested_by": current_user["email"],
+        "items": _read_blocked_ips(),
+    }
+
+
+@router.post("/security/blocked-ips", status_code=status.HTTP_201_CREATED)
+def block_ip_address(
+    payload: BlockIpRequest,
+    request: Request,
+    current_user: dict = Depends(_require_system_admin),
+) -> dict[str, Any]:
+    ip_address = payload.ip_address.strip()
+    if not ip_address or any(char.isspace() for char in ip_address):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="IP invalido.")
+    if ip_address == _request_client_ip(request):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="O administrador nao pode bloquear o proprio IP da sessao atual.",
+        )
+    entry = {
+        "ip_address": ip_address,
+        "reason": payload.reason,
+        "blocked_by": current_user["email"],
+        "blocked_at": datetime.now(timezone.utc).isoformat(),
+    }
+    redis_client.hset(BLOCKED_IPS_KEY, ip_address, json.dumps(entry, default=str))
+    _record_admin_task_submission(
+        task_id=f"ip-block-{ip_address}-{int(datetime.now(timezone.utc).timestamp())}",
+        job="security",
+        title="IP bloqueado manualmente",
+        requested_by=current_user["email"],
+        metadata={"ip_address": ip_address, "reason": payload.reason},
+    )
+    return {"status": "success", "entry": entry}
+
+
+@router.delete("/security/blocked-ips")
+def unblock_ip_address(
+    ip_address: str = Query(min_length=3, max_length=64),
+    current_user: dict = Depends(_require_system_admin),
+) -> dict[str, Any]:
+    removed = redis_client.hdel(BLOCKED_IPS_KEY, ip_address.strip())
+    _record_admin_task_submission(
+        task_id=f"ip-unblock-{ip_address}-{int(datetime.now(timezone.utc).timestamp())}",
+        job="security",
+        title="IP desbloqueado manualmente",
+        requested_by=current_user["email"],
+        metadata={"ip_address": ip_address, "removed": bool(removed)},
+    )
+    return {"status": "success", "removed": bool(removed), "ip_address": ip_address}
 
 
 @router.get("/ingestion/sources")
@@ -260,6 +524,85 @@ def trigger_massive_ingestion(
         "requested_by": current_user["email"],
         "message": "Os robos de coleta foram iniciados em segundo plano.",
     }
+
+
+def _user_payload(user: User) -> dict[str, Any]:
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "active": user.active,
+        "mfa_enabled": user.mfa_enabled,
+        "roles": sorted(role.name for role in user.roles),
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
+def _suggestion_payload(suggestion: AdminSuggestion) -> dict[str, Any]:
+    return {
+        "id": str(suggestion.id),
+        "title": suggestion.title,
+        "description": suggestion.description,
+        "category": suggestion.category,
+        "priority": suggestion.priority,
+        "status": suggestion.status,
+        "created_by_email": suggestion.created_by_email,
+        "assigned_to_email": suggestion.assigned_to_email,
+        "metadata": suggestion.metadata_json,
+        "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None,
+        "updated_at": suggestion.updated_at.isoformat() if suggestion.updated_at else None,
+    }
+
+
+def _read_blocked_ips() -> list[dict[str, Any]]:
+    try:
+        raw_entries = redis_client.hgetall(BLOCKED_IPS_KEY)
+    except redis.RedisError:
+        return []
+    entries: list[dict[str, Any]] = []
+    for ip_address, raw_value in raw_entries.items():
+        try:
+            payload = json.loads(raw_value)
+        except (TypeError, json.JSONDecodeError):
+            payload = {"ip_address": ip_address, "reason": "Registro invalido no Redis."}
+        entries.append(payload)
+    entries.sort(key=lambda item: str(item.get("blocked_at", "")), reverse=True)
+    return entries
+
+
+def _get_user_or_404(db: Session, user_id: UUID) -> User:
+    user = (
+        db.query(User)
+        .options(selectinload(User.roles))
+        .filter(User.id == user_id)
+        .one_or_none()
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario nao encontrado.")
+    return user
+
+
+def _get_or_create_role(db: Session, role_name: str) -> Role:
+    role = db.query(Role).filter(Role.name == role_name).one_or_none()
+    if role is not None:
+        return role
+    role = Role(name=role_name, description=None)
+    db.add(role)
+    db.flush()
+    return role
+
+
+def _temporary_password() -> str:
+    return f"ONGP-{secrets.token_urlsafe(18)}"
+
+
+def _request_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        first_hop = forwarded_for.split(",", 1)[0].strip()
+        if first_hop:
+            return first_hop
+    return request.client.host if request.client else None
 
 
 def _api_health() -> dict[str, Any]:

@@ -351,3 +351,32 @@ class Role(Base):
         back_populates="roles",
         lazy="selectin",
     )
+
+
+class AdminSuggestion(Base):
+    __tablename__ = "admin_suggestions"
+    __table_args__ = (
+        Index("idx_admin_suggestions_status_priority", "status", "priority"),
+        Index("idx_admin_suggestions_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False, default="operacional")
+    priority: Mapped[str] = mapped_column(Text, nullable=False, default="medium")
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    created_by_email: Mapped[str | None] = mapped_column(Text)
+    assigned_to_email: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
