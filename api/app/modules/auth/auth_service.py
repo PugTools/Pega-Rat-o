@@ -222,7 +222,7 @@ def ensure_system_roles(db: Session) -> None:
 
 def ensure_bootstrap_admin(db: Session) -> None:
     email = settings.ADMIN_BOOTSTRAP_EMAIL.strip().lower()
-    password = settings.ADMIN_BOOTSTRAP_PASSWORD
+    password = settings.ADMIN_BOOTSTRAP_PASSWORD.strip()
     if not email or not password:
         return
 

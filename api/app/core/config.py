@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     APP_ENV: str = "development"
-    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://localhost:3000,https://127.0.0.1:3000"
     CORS_ALLOWED_ORIGIN_REGEX: str = r"https://.*\.(app\.github\.dev|github\.dev|githubpreview\.dev)"
     TRUSTED_HOSTS: str = "localhost,127.0.0.1,testserver,api,ongp-api,web,ongp-web,*.github.dev,*.app.github.dev,*.githubpreview.dev"
     RATE_LIMIT_ENABLED: bool = True
