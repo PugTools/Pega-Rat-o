@@ -30,15 +30,29 @@
     }
   },
   "remoteEnv": {
+    "APP_ENV": "${localEnv:APP_ENV}",
+    "AUTH_COOKIE_NAME": "${localEnv:AUTH_COOKIE_NAME}",
+    "AUTH_COOKIE_SECURE": "${localEnv:AUTH_COOKIE_SECURE}",
+    "AUTH_COOKIE_SAMESITE": "${localEnv:AUTH_COOKIE_SAMESITE}",
+    "AUTH_COOKIE_DOMAIN": "${localEnv:AUTH_COOKIE_DOMAIN}",
+    "JWT_SECRET_KEY": "${localEnv:JWT_SECRET_KEY}",
+    "SYSTEM_ADMIN_EMAILS": "${localEnv:SYSTEM_ADMIN_EMAILS}",
+    "ADMIN_BOOTSTRAP_EMAIL": "${localEnv:ADMIN_BOOTSTRAP_EMAIL}",
+    "ADMIN_BOOTSTRAP_PASSWORD": "${localEnv:ADMIN_BOOTSTRAP_PASSWORD}",
+    "ADMIN_BOOTSTRAP_RESET_PASSWORD": "${localEnv:ADMIN_BOOTSTRAP_RESET_PASSWORD}",
+    "CORS_ALLOWED_ORIGINS": "${localEnv:CORS_ALLOWED_ORIGINS}",
+    "CORS_ALLOWED_ORIGIN_REGEX": "${localEnv:CORS_ALLOWED_ORIGIN_REGEX}",
     "CGU_API_KEY": "${localEnv:CGU_API_KEY}",
     "PORTAL_TRANSPARENCIA_API_KEY": "${localEnv:PORTAL_TRANSPARENCIA_API_KEY}",
     "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+    "OPENAI_MODEL": "${localEnv:OPENAI_MODEL}",
     "GOOGLE_CLIENT_ID": "${localEnv:GOOGLE_CLIENT_ID}",
     "GOOGLE_CLIENT_SECRET": "${localEnv:GOOGLE_CLIENT_SECRET}",
+    "GOOGLE_REDIRECT_URI": "${localEnv:GOOGLE_REDIRECT_URI}",
     "GOVBR_CLIENT_ID": "${localEnv:GOVBR_CLIENT_ID}"
   },
   "postCreateCommand": "python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && pip install -r api/requirements.txt && cd web && npm install",
-  "postStartCommand": "docker compose up -d --build",
+  "postStartCommand": "bash scripts/write_runtime_env.sh --force && bash scripts/check_runtime_secrets.sh && docker compose up -d --build",
   "customizations": {
     "vscode": {
       "extensions": [

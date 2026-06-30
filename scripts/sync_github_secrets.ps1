@@ -1,6 +1,8 @@
 param(
     [string]$Repo = "PugTools/Pega-Rat-o",
-    [string]$EnvFile = ".env"
+    [string]$EnvFile = ".env",
+    [ValidateSet("codespaces", "actions", "both")]
+    [string]$App = "codespaces"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,18 +27,50 @@ Get-Content -LiteralPath $EnvFile | ForEach-Object {
 }
 
 $requiredSecrets = @(
+    "APP_ENV",
+    "AUTH_COOKIE_NAME",
+    "AUTH_COOKIE_SECURE",
+    "AUTH_COOKIE_SAMESITE",
+    "AUTH_COOKIE_DOMAIN",
+    "JWT_SECRET_KEY",
+    "SYSTEM_ADMIN_EMAILS",
+    "ADMIN_BOOTSTRAP_EMAIL",
+    "ADMIN_BOOTSTRAP_PASSWORD",
+    "ADMIN_BOOTSTRAP_RESET_PASSWORD",
+    "CORS_ALLOWED_ORIGINS",
+    "CORS_ALLOWED_ORIGIN_REGEX",
     "CGU_API_KEY",
     "PORTAL_TRANSPARENCIA_API_KEY",
     "OPENAI_API_KEY",
+    "OPENAI_MODEL",
     "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET"
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REDIRECT_URI",
+    "GOVBR_CLIENT_ID",
+    "GOVBR_REDIRECT_URI"
 )
+
+function Set-RepoSecret {
+    param(
+        [string]$Name,
+        [string]$Value,
+        [string]$TargetApp
+    )
+
+    $Value | gh secret set $Name --repo $Repo --app $TargetApp --body-file -
+    Write-Host "Secret $Name sincronizado em $TargetApp para $Repo."
+}
 
 foreach ($name in $requiredSecrets) {
     if (-not $values.ContainsKey($name) -or [string]::IsNullOrWhiteSpace($values[$name])) {
-        throw "Variavel $name ausente ou vazia em $EnvFile."
+        Write-Warning "Variavel $name ausente ou vazia em $EnvFile. Pulando."
+        continue
     }
 
-    $values[$name] | gh secret set $name --repo $Repo --body-file -
-    Write-Host "Secret $name sincronizado no repositorio $Repo."
+    if ($App -eq "both") {
+        Set-RepoSecret -Name $name -Value $values[$name] -TargetApp "codespaces"
+        Set-RepoSecret -Name $name -Value $values[$name] -TargetApp "actions"
+    } else {
+        Set-RepoSecret -Name $name -Value $values[$name] -TargetApp $App
+    }
 }

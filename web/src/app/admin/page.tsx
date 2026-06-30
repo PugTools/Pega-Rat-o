@@ -26,7 +26,6 @@ import { BackofficeSettings } from "@/components/BackofficeSettings";
 import { PageHeader } from "@/components/ui/Primitives";
 
 const API_BASE_URL = "/api/backend";
-const MOCK_DEV_AUTH_HEADER = "Bearer mock-token-ongp";
 
 type AdminLog = {
   id: string;
@@ -1273,14 +1272,8 @@ async function adminRequest<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-  const authorization = getAdminAuthorizationHeader();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers ?? {}),
-  };
-  if (authorization) {
-    headers.Authorization = authorization;
-  }
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -1293,6 +1286,13 @@ async function adminRequest<T>(
 
     if (!response.ok) {
       const payload = await parseResponseBody(response);
+      if (response.status === 401) {
+        throw new ApiRequestError(
+          "Sessao expirada ou token invalido. Entre novamente para acionar o motor.",
+          response.status,
+          payload,
+        );
+      }
       throw new ApiRequestError(
         messageFromErrorPayload(payload) ?? `${response.status} ${response.statusText}`,
         response.status,
@@ -1311,36 +1311,6 @@ async function adminRequest<T>(
   } finally {
     window.clearTimeout(timeout);
   }
-}
-
-
-function getAdminAuthorizationHeader() {
-  const cookieToken = readCookieToken();
-  if (cookieToken) {
-    return `Bearer ${cookieToken}`;
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    return MOCK_DEV_AUTH_HEADER;
-  }
-
-  return "";
-}
-
-
-function readCookieToken() {
-  const cookies = document.cookie
-    .split(";")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  for (const name of ["ongp_token", "access_token", "token"]) {
-    const prefix = `${name}=`;
-    const found = cookies.find((cookie) => cookie.startsWith(prefix));
-    if (found) {
-      return decodeURIComponent(found.slice(prefix.length));
-    }
-  }
-  return null;
 }
 
 async function parseResponseBody(response: Response) {

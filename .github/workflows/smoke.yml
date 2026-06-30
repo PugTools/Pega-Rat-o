@@ -42,6 +42,13 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+      SYSTEM_ADMIN_EMAILS: ${{ secrets.SYSTEM_ADMIN_EMAILS }}
+      ADMIN_BOOTSTRAP_EMAIL: ${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
+      ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
+      ADMIN_BOOTSTRAP_RESET_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_RESET_PASSWORD || 'true' }}
+      CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,https://localhost:3000,https://127.0.0.1:3000' }}
+      CORS_ALLOWED_ORIGIN_REGEX: ${{ secrets.CORS_ALLOWED_ORIGIN_REGEX || 'https://.*\.(app\.github\.dev|github\.dev|githubpreview\.dev)' }}
       DB_URL: sqlite:///./ongp_ci_smoke.db
       DATABASE_URL: sqlite:///./ongp_ci_smoke.db
       REDIS_URL: redis://localhost:6379/0
@@ -83,6 +90,9 @@ jobs:
               "OPENAI_API_KEY": settings.OPENAI_API_KEY,
               "GOOGLE_CLIENT_ID": settings.GOOGLE_CLIENT_ID,
               "GOOGLE_CLIENT_SECRET": settings.GOOGLE_CLIENT_SECRET,
+              "JWT_SECRET_KEY": settings.JWT_SECRET_KEY,
+              "ADMIN_BOOTSTRAP_EMAIL": settings.ADMIN_BOOTSTRAP_EMAIL,
+              "ADMIN_BOOTSTRAP_PASSWORD": settings.ADMIN_BOOTSTRAP_PASSWORD,
           }
           missing = [name for name, value in required.items() if not value]
           if missing:
@@ -139,6 +149,13 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+      SYSTEM_ADMIN_EMAILS: ${{ secrets.SYSTEM_ADMIN_EMAILS }}
+      ADMIN_BOOTSTRAP_EMAIL: ${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
+      ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
+      ADMIN_BOOTSTRAP_RESET_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_RESET_PASSWORD || 'true' }}
+      CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,https://localhost:3000,https://127.0.0.1:3000' }}
+      CORS_ALLOWED_ORIGIN_REGEX: ${{ secrets.CORS_ALLOWED_ORIGIN_REGEX || 'https://.*\.(app\.github\.dev|github\.dev|githubpreview\.dev)' }}
       HTTP_VERIFY_SSL: "true"
     steps:
       - name: Checkout

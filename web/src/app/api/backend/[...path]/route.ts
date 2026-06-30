@@ -38,13 +38,11 @@ async function proxyToBackend(request: Request, context: RouteContext) {
   targetUrl.search = incomingUrl.search;
 
   const headers = forwardedHeaders(request.headers);
-  if (!headers.has("authorization")) {
-    const cookieToken = tokenFromCookieHeader(request.headers.get("cookie"));
-    if (cookieToken) {
-      headers.set("authorization", `Bearer ${cookieToken}`);
-    } else if (process.env.NODE_ENV !== "production") {
-      headers.set("authorization", DEFAULT_AUTH_HEADER);
-    }
+  const cookieToken = tokenFromCookieHeader(request.headers.get("cookie"));
+  if (cookieToken) {
+    headers.set("authorization", `Bearer ${cookieToken}`);
+  } else if (!headers.has("authorization") && process.env.NODE_ENV !== "production") {
+    headers.set("authorization", DEFAULT_AUTH_HEADER);
   }
 
   let response: Response;

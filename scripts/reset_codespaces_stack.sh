@@ -27,6 +27,14 @@ docker rm -f \
 echo "Limpando redes Docker nao utilizadas..."
 docker network prune -f >/dev/null || true
 
+echo "Preparando .env local a partir das variaveis/Secrets disponiveis..."
+if [[ "${GITHUB_CODESPACES:-}" == "true" ]]; then
+  bash scripts/write_runtime_env.sh --force
+else
+  bash scripts/write_runtime_env.sh --if-missing
+fi
+bash scripts/check_runtime_secrets.sh
+
 if [[ "$MODE" == "full" ]]; then
   echo "Subindo ONGP completo com analytics e monitoring..."
   docker compose --profile analytics --profile monitoring up -d --build --remove-orphans
